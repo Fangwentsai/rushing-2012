@@ -66,18 +66,42 @@ Web 版用的是**當年真正的素材**，玩法數值也是從原始的 Lua b
 
 | 項目 | 原始值 | 出處 |
 |---|---|---|
-| 血量 | 0–255 進度條 | `Time_Ai_Handler_onItem_Collision` |
-| 變大 | `scale × 1.1` 每 tick，下限 0.9 | `Action_Ai_Handler_onBallTouch` |
-| 縮小 | `scale ÷ 1.3` 每 tick，下限 0.6 | `Action_Ai_Handler_onBallRelease` |
-| 速度（按住） | 基礎 0.3，每 tick 加 0.003 | `onBallTouch` |
+| 畫面上方那條 | **時間**，0–255，每秒掉 1 | `Time_Ai_Handler_onTimeProcess` |
+| 時間過低警示 | 低於 **50** 開始閃 `life3` | `onTimeProcess` → `onLife` |
+| 結算加成 | 剩餘時間 **× 500** | `Time_Ai_Handler_onTimeCount` |
+| 撞到障礙物 | **速度歸零，不扣時間** | `Action_Ai_Handler_onCollisionSpeed` |
+| 撞到時的回饋 | HUD 鴨臉閃 `life2` | `Time_Ai_Handler_onCollision_HUDtrue` |
+| 變大 | `scale × 1.1`，下限 0.9 | `Action_Ai_Handler_onBallTouch` |
+| 縮小 | `scale ÷ 1.3`，下限 0.6 | `Action_Ai_Handler_onBallRelease` |
+| 速度（按住） | 基礎 0.3，每次 −0.003 | `onBallTouch` |
 | 速度（放開） | 上限 0.2 | `onBallRelease` |
-| 撞到障礙物 | **速度歸零** | `Action_Ai_Handler_onCollisionSpeed` |
-| LIFE+10 / −10 | ±10，上限 255 | `onItem_Collision`（感測器 23 / 22） |
-| 鯊魚 | −30 | `onItem_Collision`（感測器 30） |
-| 分數 | `+= 137` 每個計分 tick | `Time_Ai_Handler_onScorecount` |
-| 左右邊界 | 第1關 ±4.2、第2關 ±2.2、第3關 ±4.7 | `Action_Ai_Handler_onAutoSpeed` |
-| 關卡長度 | 600 / 590 / 600 單位 | `onRoom1..4_detectz` |
+| LIFE +10 / −10 | ±10 秒，上限 255 | `onItem_Collision`（感測器 23 / 22） |
+| 鯊魚 | −30 秒 | `onItem_Collision`（感測器 30） |
+| 分數 | `nTotal_Score += nfloor_time × 137` | `Time_Ai_Handler_onScorecount` |
+| 左右邊界 | ±4.2 / ±2.2 / ±4.7 | `Action_Ai_Handler_onAutoSpeed` |
+| 關卡長度 | 600 / 590 / 600 | `onRoom1..4_detectz` |
 | 鴨子動畫速度 | 按住 150、放開 60 | `Action_Ai_Handler_onBallBoolin` |
+
+> **那條不是血條，是計時器。**上架文案寫「血量歸零遊戲結束」，但程式裡它叫
+> `GameDesign.Time`，每秒掉 1，撞到障礙物完全不扣 —— 只有道具和鯊魚會動它。
+> 撞到東西的代價是速度歸零，而時鐘不會停。這跟更早的設計文件寫的
+> 「當角色碰到障礙物時，會增加完成秒數，也會減少遊戲時間」完全一致。
+
+### 唯一調過的參數
+
+`×1.1`、`÷1.3`、`−0.003` 都是**每次事件**的變化量。原始碼用
+`user.postEvent(..., 0.001, ...)` 讓處理器自己重排，所以事件多久觸發一次是
+ShiVa 執行期的設定，**不在 `.stk` 裡**。直接假設 60Hz 的話 `1.1^60` ≈ 每秒 300 倍，
+完全不是遊戲的樣子。
+
+所以比例和門檻全部照抄，只把事件率當成唯一的自由參數，調到符合當年的手感：
+
+```js
+var STEP_HZ = 7;    // 縮放與加速：每秒幾次事件
+```
+
+按住約 1 秒從 0.9 放大到上限，放開約 0.6 秒縮回 0.6。移動則固定 60Hz，
+因為那才能讓 2390 單位的總長度落在 255 秒的計時器內。想調手感就改這個值。
 
 感測器 ID 也照原本的：1/2/3 換關、4 抵達終點、21–25 是五個道具、30 是鯊魚
 （見 `Player_Ai_Handler_onSensorCollisionBegin`）。

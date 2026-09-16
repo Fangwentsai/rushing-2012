@@ -390,7 +390,7 @@
         </div>
         <p class="plank" style="margin:0">
           想拿高分就得一直在「衝快」和「閃得過」之間取捨 —— 這是整個遊戲唯一的難題。
-          撞到障礙物<b style="color:#ff8b6a">速度會直接歸零</b>，體積也被打回最小，要重新加速。
+          撞到障礙物<b style="color:#ff8b6a">速度直接歸零</b>、體積打回最小 —— 不扣時間，但時鐘不會停，重新加速就是代價。
         </p>
         <div class="boxhead">
           <img src="assets/item_block.png" alt="">
@@ -399,9 +399,9 @@
         <div class="loot">
           <div class="row"><img src="assets/orig/1109speedup.png" alt=""><span><b>SPEED UP</b> — 短暫加速，期間分數雙倍</span></div>
           <div class="row"><img src="assets/orig/1109jump.png" alt=""><span><b>JUMP</b> — 起飛越過障礙物，滯空時無敵</span></div>
-          <div class="row"><img src="assets/orig/1109Life10.png" alt=""><span><b>LIFE+10</b> — 補血十點，上限 255</span></div>
-          <div class="row bad"><img src="assets/orig/1109Life_10.png" alt=""><span><b>LIFE−10</b> — 扣血十點，賭輸了</span></div>
-          <div class="row bad"><img src="assets/orig/onshark.png" alt=""><span><b>鯊魚</b> — 大海裡會出現，撞到扣三十點</span></div>
+          <div class="row"><img src="assets/orig/1109Life10.png" alt=""><span><b>LIFE+10</b> — 加十秒，上限 255</span></div>
+          <div class="row bad"><img src="assets/orig/1109Life_10.png" alt=""><span><b>LIFE−10</b> — 扣十秒，賭輸了</span></div>
+          <div class="row bad"><img src="assets/orig/onshark.png" alt=""><span><b>鯊魚</b> — 大海裡會出現，撞到扣三十秒</span></div>
         </div>
         <div class="keys">
           <div class="key"><b>按住 / SPACE</b><span>變大加速，放開縮小減速</span></div>
@@ -452,6 +452,7 @@
           <div class="stat"><i>最遠場景</i><b id="ovstage">下水道</b></div>
           <div class="stat"><i>撞擊次數</i><b id="ovhits">0</b></div>
           <div class="stat"><i>開箱次數</i><b id="ovboxes">0</b></div>
+          <div class="stat"><i>剩餘時間加成</i><b id="ovbonus">0</b></div>
         </div>
         <button class="sign" type="button" data-go="play">RETRY</button>
         <button class="sign" type="button" data-go="title">TITLE</button>
@@ -548,19 +549,30 @@ function rollLoot(){
 }
 
 /* original tuning, straight out of the bytecode */
-var HP_MAX     = 255;     // the life bar is a 0..255 hud progress value
-var TICK       = 1/60;    // the Lua handlers re-posted themselves every frame
+var TIME_MAX   = 255;     // GameDesign.Time is a 0..255 hud progress bar
+var TIME_DRAIN = 1;       // onTimeProcess: nValue -= 1, re-posted every second
+var TIME_WARN  = 50;      // below this onLife starts blinking the duck face
+var TIME_BONUS = 500;     // onTimeCount: Final_Score += nValue * 500
+var TICK       = 1/60;    // movement step; 60 Hz is what makes 2390 units fit
+                          // inside the 255-second clock, so it is anchored
+/* The Lua re-posted onBallTouch / onBallRelease with a 0.001 s delay, so the
+   scale and acceleration steps below happen once per ShiVa user event. That
+   event rate is a runtime property and is NOT in the .stk — at 60 Hz the 1.1
+   multiplier compounds to ~300x a second, which is nothing like the game.
+   Every ratio and threshold here is exactly what the bytecode says; this rate
+   is the one free parameter, set to match how the game actually played. */
+var STEP_HZ    = 7;
 var GROW       = 1.1;     // onBallTouch:   scale = scale * 1.1, floor 0.9
 var SHRINK     = 1.3;     // onBallRelease: scale = scale / 1.3, floor 0.6
 var SIZE_MIN   = 0.6;
 var SIZE_FLOOR = 0.9;
-var SIZE_MAX   = 2.2;     // the original had no cap; the channel needs one
+var SIZE_MAX   = 1.8;     // the original had no cap; the channel needs one
 var SPD_BASE   = 0.3;     // onBallTouch clamps Speed to 0.3 before accelerating
 var SPD_ACC    = 0.003;   // and subtracts 0.003 every tick
 var SPD_REL    = 0.2;     // onBallRelease caps Speed at 0.2
-var SPD_MAX    = 1.1;
-var SHARK_DMG  = 30;
-var HIT_DMG    = 10;
+var SPD_MAX    = 0.8;
+var SHARK_DMG  = 30;      // sensor 30 costs 30 time
+/* an obstacle costs no time at all — onCollisionSpeed just sets Speed to 0 */
 var SCORE_STEP = 137;     // nTotal_Score += nfloor_time * 137
 var SCORE_EVERY = 0.2;
 var LAT        = 0.13;    // lateral units per tick — tuned, not recovered
@@ -867,8 +879,8 @@ function newState(){
   return {
     mode:"title",
     z:0, lateral:0, size:SIZE_MIN,
-    speed:SPD_REL, hp:HP_MAX, score:0, hits:0, boxesHit:0,
-    acc:0, scoreT:0, faceT:0,
+    speed:SPD_REL, time:TIME_MAX, score:0, hits:0, boxesHit:0,
+    acc:0, stepAcc:0, scoreT:0, faceT:0, timeT:0,
     stage:0,
     boost:0, air:0, vy:0, airY:0,
     inv:0, shake:0, t:0,
@@ -1160,19 +1172,28 @@ function flash(cls){
   f.className = ""; void f.offsetWidth; f.className = cls;
   setTimeout(function(){ f.className = ""; }, 420);
 }
-function hurt(dmg, fromItem){
-  if(S.inv > 0 && !fromItem) return;
-  S.hp -= dmg;
-  if(!fromItem){
-    S.hits++;
-    S.inv = 0.95; S.shake = 1;
-    S.speed = 0;                 // Action_Ai_Handler_onCollisionSpeed: Speed(0)
-    S.size = SIZE_MIN;
-  }
-  S.faceT = 0.45;                // Time_Ai_Handler_onLife swaps life1 <-> life3
+/* Hitting an obstacle runs random_object.onSensorCollisionBegin, which only
+   sends onCollisionSpeed (Speed = 0) and onCollision_HUDtrue (the face flashes
+   to life2). It costs no time directly — losing all your speed is the penalty,
+   and the clock keeps draining while you build it back up. */
+function crash(){
+  if(S.inv > 0) return;
+  S.hits++;
+  S.inv = 0.95; S.shake = 1;
+  S.speed = 0;
+  S.size = SIZE_MIN;
+  S.faceT = 0.45;
   flash("hit");
   var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "hurt";
-  if(S.hp <= 0){ S.hp = 0; endRun(false); }
+}
+
+/* Items and the shark do move the clock: Time_Ai_Handler_onItem_Collision. */
+function costTime(n){
+  S.time -= n;
+  S.faceT = 0.45;
+  flash("hit");
+  var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "hurt";
+  if(S.time <= 0){ S.time = 0; endRun(false); }
 }
 
 /* ---- the ? box payout ---- */
@@ -1187,26 +1208,29 @@ function openBox(){
   } else if(item.key === "jump"){                 // sensor 25
     S.air = 1.5; S.vy = 13; S.airY = 0.1; S.inv = 1.6;
   } else if(item.key === "life"){                 // sensor 23: nValue += 10, cap 255
-    S.hp = Math.min(HP_MAX, S.hp + 10);
+    S.time = Math.min(TIME_MAX, S.time + 10);
     flash("good");
     var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "heal";
   } else {                                        // sensor 22: nValue -= 10
-    hurt(10, true);
+    costTime(10);
   }
 }
 
 function endRun(cleared){
   S.mode = "over";
   var dist = Math.floor(S.z/4);
-  var score = Math.floor(S.score) + (cleared ? 25000 : 0);
+  // onTimeCount: Final_Score = score + nValue * 500
+  var left = Math.max(0, Math.round(S.time));
+  var score = Math.floor(S.score) + left*TIME_BONUS + (cleared ? 25000 : 0);
   stopMusic();
   $("overkind").textContent = cleared ? "Stage Clear" : "Game Over";
-  $("overtitle").textContent = cleared ? "當奇抵達小島" : "當奇沉了";
+  $("overtitle").textContent = cleared ? "當奇抵達小島" : "時間用完了";
   $("finalscore").textContent = score.toLocaleString("en-US");
   $("ovdist").textContent = dist + " m";
   $("ovstage").textContent = STAGES[Math.min(S.stage, 3)].name;
   $("ovhits").textContent = S.hits;
   $("ovboxes").textContent = S.boxesHit;
+  $("ovbonus").textContent = (left*TIME_BONUS).toLocaleString("en-US");
 
   var runs = loadRuns();
   var best = runs.length ? (Number(runs[0].score) || 0) : 0;
@@ -1222,15 +1246,16 @@ var lastScore = -1, lastHp = -1, lastDist = -1, lastStage = -1, lastFace = "";
 function updateHUD(force){
   var sc = Math.floor(S.score);
   if(force || sc !== lastScore){ $("score").textContent = sc.toLocaleString("en-US"); lastScore = sc; }
-  var hp = Math.max(0, Math.round(S.hp));
+  var hp = Math.max(0, Math.round(S.time));
   if(force || hp !== lastHp){
     var fill = $("hpfill");
-    fill.style.width = (hp / HP_MAX * 100).toFixed(1) + "%";
-    fill.classList.toggle("low", hp <= HP_MAX*0.25);
+    fill.style.width = (hp / TIME_MAX * 100).toFixed(1) + "%";
+    fill.classList.toggle("low", hp <= TIME_WARN);
     lastHp = hp;
   }
-  // life1 normal, life3 on the hit flash, life2 once the bar runs low
-  var want = S.faceT > 0 ? "life3" : (hp <= HP_MAX*0.25 ? "life2" : "life1");
+  // onCollision_HUDtrue flashes life2; onLife blinks life3 below 50
+  var want = S.faceT > 0 ? "life2"
+           : (hp <= TIME_WARN && Math.floor(S.t*4) % 2 ? "life3" : "life1");
   if(force || want !== lastFace){
     $("face").src = "assets/orig/" + want + ".png";
     lastFace = want;
@@ -1304,10 +1329,12 @@ function step(dt){
   S.steer += (input - S.steer) * Math.min(1, dt*9);
 
   var bound = STAGES[Math.min(S.stage,3)].halfW;
-  S.acc += dt;
-  var guard = 0;
-  while(S.acc >= TICK && guard++ < 8){
-    S.acc -= TICK;
+
+  /* scale and acceleration: one step per ShiVa user event */
+  S.stepAcc += dt * STEP_HZ;
+  var steps = Math.min(4, Math.floor(S.stepAcc));
+  S.stepAcc -= steps;
+  while(steps-- > 0){
     if(hold){
       S.size = Math.min(SIZE_MAX, Math.max(SIZE_FLOOR, S.size * GROW));
       if(S.speed < SPD_BASE) S.speed = SPD_BASE;
@@ -1316,7 +1343,14 @@ function step(dt){
       S.size = Math.max(SIZE_MIN, S.size / SHRINK);
       if(S.speed > SPD_REL) S.speed = SPD_REL;
     }
-    if(S.boost > 0) S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC*2);
+    if(S.boost > 0) S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC*3);
+  }
+
+  /* movement: object.translate(Box, 0, 0, Speed) each tick */
+  S.acc += dt;
+  var guard = 0;
+  while(S.acc >= TICK && guard++ < 8){
+    S.acc -= TICK;
     S.lateral -= S.steer * LAT;
     var lim = Math.max(0.3, bound - 0.5*S.size);
     if(S.lateral > lim) S.lateral = lim;
@@ -1332,6 +1366,14 @@ function step(dt){
     S.vy -= 24*dt;
     S.airY = Math.max(0, S.airY + S.vy*dt);
     if(S.airY <= 0){ S.airY = 0; S.air = 0; }
+  }
+
+  /* Time_Ai_Handler_onTimeProcess: nValue -= 1 once a second */
+  S.timeT += dt;
+  while(S.timeT >= 1){
+    S.timeT -= 1;
+    S.time -= TIME_DRAIN;
+    if(S.time <= 0){ S.time = 0; endRun(false); return; }
   }
 
   /* nTotal_Score += nfloor_time * 137, on a timer */
@@ -1390,7 +1432,7 @@ function step(dt){
     ddx = (centerX(d.z) + d.lat) - dx;
     if(Math.abs(ddx) < d.r + dr && Math.abs(ddz) < d.rz + dr*0.9){
       d.live = false; m.visible = false;
-      hurt(11 + sizeNorm*9, false);
+      crash();
       if(S.mode !== "play") return;
     }
   }
@@ -1419,7 +1461,7 @@ function step(dt){
     if(sd.z < S.z - 14){ sd.live = false; shark.visible = false; }
     else if(Math.abs(sd.z - S.z) < 2.6 + dr && Math.abs((centerX(sd.z)+sd.lat) - dx) < 3.0 + dr){
       sd.live = false; shark.visible = false;
-      hurt(SHARK_DMG, false);
+      costTime(SHARK_DMG);
       if(S.mode !== "play") return;
     }
   }
