@@ -48,20 +48,46 @@
 
 ## 關於這個重製版
 
-原始的 `.shiva` 專案檔已經遺失，`Rushing2.0.stk` 是加密的 ShiVa runtime 封裝檔，
-裡面的 3ds Max 模型和貼圖救不回來。所以這是**照設計文件重新做的**，不是移植。
+`Rushing2.0.stk` **已經解開了**。它不是加密，是 XOR 混淆加 zlib 壓縮，
+392 個檔案全部取出且 CRC 全過（解包工具與原始檔在私有封存庫）。所以這個
+Web 版用的是**當年真正的素材**，玩法數值也是從原始的 Lua bytecode 讀出來的。
 
-**沿用的 2012 年原始素材：**
+### 沿用的 2012 年原始素材
 
-- 標題主視覺、遊戲圖示、THYY logo、HUD 的鴨頭
-- 五張道具原圖（問號方塊、JUMP、SPEED UP、LIFE+10、LIFE−10）
+- 標題主視覺、遊戲圖示、THYY logo
+- 當奇的 HUD 頭像三種狀態（`life1` 正常 / `life3` 受擊 / `life2` 血量過低）
+- 水流貼圖、樹、鯊魚、WARNING
+- 四個道具的原圖：SPEED UP、JUMP、LIFE+10、LIFE−10
+- **五首配樂**，組員當年用 Garage Band 自己做的（`.mus` 本身就是 OGG Vorbis）
 
-**重新做的：**
+### 從 Lua bytecode 還原的玩法數值
 
-- 3D 場景、當奇的模型、水流、天空 —— 全部用 Three.js 程式生成，
-  配色參考研討會論文簡報裡的四張場景 render
+腳本是 Lua 5.0 bytecode（ShiVa 1.x 用的版本），反組譯後讀到：
 
-玩法、道具、場景順序、分數只留前三名，都是照當年的設計文件和研討會論文還原的。
+| 項目 | 原始值 | 出處 |
+|---|---|---|
+| 血量 | 0–255 進度條 | `Time_Ai_Handler_onItem_Collision` |
+| 變大 | `scale × 1.1` 每 tick，下限 0.9 | `Action_Ai_Handler_onBallTouch` |
+| 縮小 | `scale ÷ 1.3` 每 tick，下限 0.6 | `Action_Ai_Handler_onBallRelease` |
+| 速度（按住） | 基礎 0.3，每 tick 加 0.003 | `onBallTouch` |
+| 速度（放開） | 上限 0.2 | `onBallRelease` |
+| 撞到障礙物 | **速度歸零** | `Action_Ai_Handler_onCollisionSpeed` |
+| LIFE+10 / −10 | ±10，上限 255 | `onItem_Collision`（感測器 23 / 22） |
+| 鯊魚 | −30 | `onItem_Collision`（感測器 30） |
+| 分數 | `+= 137` 每個計分 tick | `Time_Ai_Handler_onScorecount` |
+| 左右邊界 | 第1關 ±4.2、第2關 ±2.2、第3關 ±4.7 | `Action_Ai_Handler_onAutoSpeed` |
+| 關卡長度 | 600 / 590 / 600 單位 | `onRoom1..4_detectz` |
+| 鴨子動畫速度 | 按住 150、放開 60 | `Action_Ai_Handler_onBallBoolin` |
+
+感測器 ID 也照原本的：1/2/3 換關、4 抵達終點、21–25 是五個道具、30 是鯊魚
+（見 `Player_Ai_Handler_onSensorCollisionBegin`）。
+
+### 沒能照搬的部分
+
+- **3D 模型**：30 個 `.msh` 都在，但那是 ShiVa 自己的二進位格式，還沒寫解析器，
+  所以場景和當奇仍然是用 Three.js 程式生成的
+- **體積上限**：原始碼只有下限沒有上限，這裡加了 2.2 的上限，否則會撐爆畫面
+- **左右移動速度**：沒能從常數中確定，是自己調的
 
 ## 技術
 
