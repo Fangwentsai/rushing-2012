@@ -561,11 +561,11 @@ var TICK       = 1/60;    // movement step; 60 Hz is what makes 2390 units fit
    multiplier compounds to ~300x a second, which is nothing like the game.
    Every ratio and threshold here is exactly what the bytecode says; this rate
    is the one free parameter, set to match how the game actually played. */
-var STEP_HZ    = 7;
+var STEP_HZ    = 7;       // applied continuously, not as discrete steps
 var GROW       = 1.1;     // onBallTouch:   scale = scale * 1.1, floor 0.9
 var SHRINK     = 1.3;     // onBallRelease: scale = scale / 1.3, floor 0.6
 var SIZE_MIN   = 0.6;
-var SIZE_FLOOR = 0.9;
+var SIZE_FLOOR = 0.9;     // onBallTouch floors the scale at 0.9 while held
 var SIZE_MAX   = 1.8;     // the original had no cap; the channel needs one
 var SPD_BASE   = 0.3;     // onBallTouch clamps Speed to 0.3 before accelerating
 var SPD_ACC    = 0.003;   // and subtracts 0.003 every tick
@@ -880,7 +880,7 @@ function newState(){
     mode:"title",
     z:0, lateral:0, size:SIZE_MIN,
     speed:SPD_REL, time:TIME_MAX, score:0, hits:0, boxesHit:0,
-    acc:0, stepAcc:0, scoreT:0, faceT:0, timeT:0,
+    acc:0, scoreT:0, faceT:0, timeT:0,
     stage:0,
     boost:0, air:0, vy:0, airY:0,
     inv:0, shake:0, t:0,
@@ -1330,21 +1330,21 @@ function step(dt){
 
   var bound = STAGES[Math.min(S.stage,3)].halfW;
 
-  /* scale and acceleration: one step per ShiVa user event */
-  S.stepAcc += dt * STEP_HZ;
-  var steps = Math.min(4, Math.floor(S.stepAcc));
-  S.stepAcc -= steps;
-  while(steps-- > 0){
-    if(hold){
-      S.size = Math.min(SIZE_MAX, Math.max(SIZE_FLOOR, S.size * GROW));
-      if(S.speed < SPD_BASE) S.speed = SPD_BASE;
-      S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC);
-    } else {
-      S.size = Math.max(SIZE_MIN, S.size / SHRINK);
-      if(S.speed > SPD_REL) S.speed = SPD_REL;
-    }
-    if(S.boost > 0) S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC*3);
+  /* Scale and acceleration. The original applied x1.1 / /1.3 / -0.003 once
+     per event; stepping those discretely looks chunky, so apply the same
+     rates continuously — pow(GROW, dt*STEP_HZ) reaches exactly the same size
+     at the same moment as STEP_HZ discrete steps would, but stays smooth at
+     any frame rate. */
+  var k = dt * STEP_HZ;
+  if(hold){
+    S.size = Math.min(SIZE_MAX, Math.max(SIZE_FLOOR, S.size * Math.pow(GROW, k)));
+    if(S.speed < SPD_BASE) S.speed = SPD_BASE;
+    S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC * k);
+  } else {
+    S.size = Math.max(SIZE_MIN, S.size / Math.pow(SHRINK, k));
+    if(S.speed > SPD_REL) S.speed = SPD_REL;
   }
+  if(S.boost > 0) S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC * k * 3);
 
   /* movement: object.translate(Box, 0, 0, Speed) each tick */
   S.acc += dt;
