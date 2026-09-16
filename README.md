@@ -78,7 +78,10 @@ Web 版用的是**當年真正的素材**，玩法數值也是從原始的 Lua b
 | 左右移動 | 每次 **0.1** 單位 | `Action_Ai_Handler_onLeftClick` |
 | 攝影機側傾 | 轉彎時每次 +0.5 度，**上限 10 度** | `onLeftClick` |
 | 攝影機基準俯角 | −15 度 | `onitem_disable` 還原值 |
-| 分數 | `nTotal_Score += nfloor_time × 137` | `Time_Ai_Handler_onScorecount` |
+| 計時器起始值 | **200**（進度條上限 255） | `Time_Ai.aim` 的 `nValue` 預設值 |
+| 分數 | 每過一個區段檢查點加 `nfloor_time × 137`，然後 `nfloor_time` 重設回 20；`nfloor_time` 每秒 −1 —— **越快通過拿越多** | `onScorecount` + `onTimeProcess` + `Time_Ai.aim` |
+| 鯊魚速度 | −1.5 | `Shark_ai.aim` 的 `nSpeed` |
+| `Speed` 初值 | −0.2 | `Action_Ai.aim` |
 | 左右邊界 | ±4.2 / ±2.2 / ±4.7 | `Action_Ai_Handler_onAutoSpeed` |
 | 鴨子動畫速度 | 按住 150、放開 60 | `Action_Ai_Handler_onBallBoolin` |
 

@@ -548,7 +548,8 @@ var LOOT = [
 function rollLoot(){ return LOOT[Math.floor(Math.random()*LOOT.length)]; }
 
 /* original tuning, straight out of the bytecode */
-var TIME_MAX   = 255;     // GameDesign.Time is a 0..255 hud progress bar
+var TIME_MAX   = 255;     // the GameDesign.Time bar tops out at 255 ...
+var TIME_START = 200;     // ... but Time_Ai.aim starts nValue at 200
 var TIME_DRAIN = 1;       // onTimeProcess: nValue -= 1, re-posted every second
 var TIME_WARN  = 50;      // below this onLife starts blinking the duck face
 var TIME_BONUS = 500;     // onTimeCount: Final_Score += nValue * 500
@@ -574,8 +575,13 @@ var SHARK_DMG  = 30;      // sensor 30 costs 30 time
 /* an obstacle costs no time — onCollisionSpeed zeroes Speed and drops
    bAutospeed_stat, which onAutoSpeed restores after this cooldown */
 var AUTOSPEED_COLD = 0.5;
-var SCORE_STEP = 137;     // nTotal_Score += nfloor_time * 137
-var SCORE_EVERY = 0.2;
+/* Scoring rewards speed. Time_Ai.aim starts nfloor_time at 20;
+   onTimeProcess drops it by 1 every second; each time a scenery segment
+   recycles (onRoom1..4_move) onScorecount adds nfloor_time * 137 and puts
+   nfloor_time back to 20. Cover a segment quickly and it is still high. */
+var SCORE_STEP  = 137;
+var FLOOR_START = 20;
+var CHECK_EVERY = 60;     // distance between segment checkpoints
 var LAT        = 0.1;     // onLeftClick: object.translate(Box, -0.1, 0, 0)
 var CAM_BANK   = 10;      // onLeftClick banks Action_camera up to 10 degrees
 var ITEM_TIME  = 1.0;     // onitem_enable posts onitem_disable one second later
@@ -884,8 +890,9 @@ function newState(){
   return {
     mode:"title",
     z:0, lateral:0, size:SIZE_MIN,
-    speed:SPD_REL, time:TIME_MAX, score:0, hits:0, boxesHit:0,
-    acc:0, scoreT:0, faceT:0, timeT:0, stall:0,
+    speed:SPD_REL, time:TIME_START, score:0, hits:0, boxesHit:0,
+    floorTime:FLOOR_START, nextCheck:CHECK_EVERY,
+    acc:0, faceT:0, timeT:0, stall:0,
     stage:0,
     boost:0, jump:0, flip:0, airY:0,
     inv:0, shake:0, t:0,
@@ -1387,19 +1394,20 @@ function step(dt){
   }
   if(S.flip > 0) S.flip -= dt;
 
-  /* Time_Ai_Handler_onTimeProcess: nValue -= 1 once a second */
+  /* onTimeProcess, once a second: nValue -= 1 and nfloor_time -= 1 */
   S.timeT += dt;
   while(S.timeT >= 1){
     S.timeT -= 1;
     S.time -= TIME_DRAIN;
+    S.floorTime = Math.max(0, S.floorTime - 1);
     if(S.time <= 0){ S.time = 0; endRun(false); return; }
   }
 
-  /* nTotal_Score += nfloor_time * 137, on a timer */
-  S.scoreT += dt;
-  while(S.scoreT >= SCORE_EVERY){
-    S.scoreT -= SCORE_EVERY;
-    S.score += SCORE_STEP * (S.boost > 0 ? 2 : 1);
+  /* onRoomN_move -> onScorecount: banks nfloor_time * 137, resets to 20 */
+  while(S.z > S.nextCheck){
+    S.nextCheck += CHECK_EVERY;
+    S.score += S.floorTime * SCORE_STEP;
+    S.floorTime = FLOOR_START;
   }
   if(S.inv > 0) S.inv -= dt;
   if(S.faceT > 0) S.faceT -= dt;
