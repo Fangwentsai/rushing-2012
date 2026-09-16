@@ -694,48 +694,39 @@ function makeDotTexture(){
   return new THREE.CanvasTexture(c);
 }
 
+/* ----------------------------------------------------------------
+   The real 3ds Max geometry, decoded out of the .msh files. Each mesh is
+   authored at its own scale, so fit() recentres it and scales it to the
+   size this remake's world uses.
+   ---------------------------------------------------------------- */
+var MODELS = null;
+function geom(name, targetH, keepGround){
+  var m = MODELS && MODELS[name];
+  if(!m) return null;
+  var g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(m.p, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(m.n, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(m.u, 2));
+  g.setIndex(m.i);
+  var mn = m.bmin, mx = m.bmax;
+  var h = Math.max(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]) || 1;
+  var k = targetH / h;
+  g.translate(-(mn[0]+mx[0])/2, keepGround ? -mn[1] : -(mn[1]+mx[1])/2, -(mn[2]+mx[2])/2);
+  g.scale(k, k, k);
+  return g;
+}
+
 function buildDuck(){
   var g = new THREE.Group();
-  var skin = new THREE.MeshLambertMaterial({ color:0xd9a410 });
-  var bill = new THREE.MeshLambertMaterial({ color:0xdd5f18 });
-  var white = new THREE.MeshLambertMaterial({ color:0xfdf6e6 });
-  var black = new THREE.MeshLambertMaterial({ color:0x15100a });
-  var metal = new THREE.MeshLambertMaterial({ color:0x8e9298 });
-
-  var body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin);
-  body.scale.set(1, 0.88, 1.12); body.position.y = 0.98; g.add(body);
-
-  var head = new THREE.Mesh(new THREE.SphereGeometry(0.66, 20, 14), skin);
-  head.scale.set(1, 1.06, 0.98); head.position.set(0, 2.08, 0.16); g.add(head);
-
-  var beak = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 10), bill);
-  beak.scale.set(1.15, 0.5, 1.5); beak.position.set(0, 1.92, 0.78); g.add(beak);
-
-  var eg = new THREE.SphereGeometry(0.17, 12, 10);
-  var pg = new THREE.SphereGeometry(0.085, 10, 8);
-  [-1, 1].forEach(function(s){
-    var e = new THREE.Mesh(eg, white); e.position.set(0.26*s, 2.24, 0.52); g.add(e);
-    var p = new THREE.Mesh(pg, black); p.position.set(0.28*s, 2.23, 0.66); g.add(p);
-  });
-
-  var tail = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.72, 10), skin);
-  tail.rotation.x = -2.25; tail.position.set(0, 1.28, -1.02); g.add(tail);
-
-  [-1, 1].forEach(function(s){
-    var w = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), skin);
-    w.scale.set(0.34, 0.86, 1.05); w.position.set(0.9*s, 1.0, 0.02); g.add(w);
-  });
-
-  // the wind-up key on its back, visible in the 2012 screenshots
-  duckKey = new THREE.Group();
-  var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.32, 8), metal);
-  stem.rotation.z = Math.PI/2; duckKey.add(stem);
-  var ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.062, 7, 14), metal);
-  ring.position.x = -0.24; ring.rotation.y = Math.PI/2; duckKey.add(ring);
-  var bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.1), metal);
-  bar.position.x = -0.24; duckKey.add(bar);
-  duckKey.position.set(-1.02, 1.18, -0.28);
-  g.add(duckKey);
+  var tex = new THREE.TextureLoader().load("assets/orig/move_1.png");
+  var skin = new THREE.MeshLambertMaterial({ map:tex });
+  var body = new THREE.Mesh(geom("move_Sphere01-lib", 2.1, true), skin);
+  g.add(body);
+  var trim = new THREE.Mesh(geom("move_Object01-lib", 1.5, true),
+                            new THREE.MeshLambertMaterial({ map:tex }));
+  trim.position.y = 0.18;
+  g.add(trim);
+  duckKey = trim;
 
   foamCone = new THREE.Mesh(
     new THREE.ConeGeometry(1.05, 3.4, 12, 1, true),
@@ -850,9 +841,10 @@ function initGL(){
     scene.add(t); trees.push(t);
   }
 
-  var rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  var slabGeo = new THREE.BoxGeometry(3.2, 0.34, 1.5);
-  var drumGeo = new THREE.CylinderGeometry(0.9, 0.9, 1.8, 10);
+  // the props Scene01-03 actually place: a rock, a Coca-Cola can, a bottle
+  var rockGeo = geom("rock_Sphere01-lib", 2.4, true) || new THREE.DodecahedronGeometry(1, 0);
+  var slabGeo = geom("Barriers_01_Cylinder01-lib", 2.2, true) || new THREE.BoxGeometry(3.2, 0.34, 1.5);
+  var drumGeo = geom("Bottles_Gengon01-lib", 2.6, true) || new THREE.CylinderGeometry(0.9, 0.9, 1.8, 10);
   for(i=0;i<26;i++){
     var kind = i % 3;
     m = new THREE.Mesh(kind === 0 ? rockGeo : kind === 1 ? slabGeo : drumGeo,
@@ -864,24 +856,26 @@ function initGL(){
 
   // the golden ? box, using the original 3ds Max render as a billboard
   boxTex = new THREE.TextureLoader().load("assets/orig/itembox.png");
+  var boxGeo = geom("Item01_Object01-lib", 3.4, true);
   for(i=0;i<5;i++){
-    m = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.5, 4.1),
-      new THREE.MeshBasicMaterial({ map:boxTex, transparent:true, alphaTest:0.35, side:THREE.DoubleSide, fog:true })
-    );
-    m.rotation.y = Math.PI;
+    m = boxGeo
+      ? new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ map:boxTex }))
+      : new THREE.Mesh(new THREE.PlaneGeometry(2.5, 4.1),
+          new THREE.MeshBasicMaterial({ map:boxTex, transparent:true, alphaTest:0.35,
+                                        side:THREE.DoubleSide }));
     m.visible = false;
     m.userData = { live:false };
     scene.add(m); boxes.push(m);
   }
 
   // sensor 30 in the original: touching it costs 30 life
-  shark = new THREE.Mesh(
-    new THREE.PlaneGeometry(7.2, 4.2),
-    new THREE.MeshBasicMaterial({ map:new THREE.TextureLoader().load("assets/orig/onshark.png"),
-                                  transparent:true, alphaTest:0.3, side:THREE.DoubleSide })
-  );
-  shark.rotation.y = Math.PI;
+  var sharkGeo = geom("shark_Sphere01-lib", 6.0, false);
+  shark = sharkGeo
+    ? new THREE.Mesh(sharkGeo, new THREE.MeshLambertMaterial({
+        map:new THREE.TextureLoader().load("assets/orig/shark.png"), color:0x8a9098 }))
+    : new THREE.Mesh(new THREE.PlaneGeometry(7.2, 4.2),
+        new THREE.MeshBasicMaterial({ map:new THREE.TextureLoader().load("assets/orig/onshark.png"),
+                                      transparent:true, alphaTest:0.3, side:THREE.DoubleSide }));
   shark.visible = false;
   shark.userData = { live:false, z:0, lat:0, dir:1 };
   scene.add(shark);
@@ -901,6 +895,7 @@ function initGL(){
 }
 
 function resize(){
+  if(!renderer) return;              // models.json loads first, so initGL is late
   var w = stageEl.clientWidth, h = stageEl.clientHeight;
   if(!w || !h) return;
   renderer.setSize(w, h, false);
@@ -1140,19 +1135,20 @@ function spawnObstacle(z, lane){
   d.live = true; m.visible = true;
   d.lat = lane !== undefined ? lane : (Math.random()*2 - 1) * (bound() - 0.7);
   d.z = z;
-  if(d.kind === 0){
-    var sc = 0.9 + Math.random()*1.0;
-    m.scale.set(sc*1.5, sc*0.85, sc*1.25);
+  if(d.kind === 0){                       // rock
+    var sc = 0.85 + Math.random()*0.7;
+    m.scale.setScalar(sc);
     m.material.color.setHex(st.rock);
-    d.r = sc*1.35; d.rz = sc*1.2; d.h = sc*1.1;
-  } else if(d.kind === 1){
-    m.scale.set(0.8 + Math.random()*0.7, 1, 1);
-    m.material.color.setHex(st.slab);
-    d.r = 1.7; d.rz = 0.9; d.h = 0.3;
-  } else {
-    m.scale.set(1, 0.8 + Math.random()*0.5, 1);
+    d.r = sc*1.1; d.rz = sc*1.1; d.h = sc*2.2;
+  } else if(d.kind === 1){                // Coca-Cola can, lying across the flow
+    m.scale.setScalar(0.9 + Math.random()*0.4);
+    m.material.color.setHex(0xb8342a);
+    m.rotation.z = Math.PI/2;
+    d.r = 1.1; d.rz = 0.6; d.h = 1.0;
+  } else {                                // bottle
+    m.scale.setScalar(0.85 + Math.random()*0.4);
     m.material.color.setHex(st.drum);
-    d.r = 1.0; d.rz = 1.0; d.h = 0.9;
+    d.r = 0.8; d.rz = 0.8; d.h = 2.4;
   }
   m.rotation.y = Math.random()*Math.PI;
   m.position.set(centerX(z) + d.lat, d.h*0.45, z);
@@ -1513,6 +1509,7 @@ function step(dt){
       if(S.mode !== "play") return;
     } else {
       m.position.y = 2.3 + Math.sin(S.t*2.6 + d.z)*0.22;
+      m.rotation.y = S.t*1.4 + d.z;
     }
   }
 
@@ -1546,10 +1543,10 @@ function placeDuck(sizeNorm, dt){
   duck.rotation.z = S.roll;
   duck.rotation.y = -S.steer*0.28;
   duck.rotation.x = S.jump > 0 ? -0.25 : Math.sin(S.t*5)*0.03;
-  duckKey.rotation.x += dt * S.speed * 0.4;
+  duckKey.rotation.y = Math.sin(S.t*3)*0.12;
   foamCone.material.opacity = 0.1 + sizeNorm*0.2 + (S.boost > 0 ? 0.2 : 0);
   foamCone.scale.set(1, 1 + (S.boost > 0 ? 0.7 : 0) + sizeNorm*0.4, 1);
-  duckBody.material.color.setHex(S.inv > 0 && (Math.floor(S.t*22) % 2) ? 0xff5c4a : 0xd9a410);
+  duckBody.material.color.setHex(S.inv > 0 && (Math.floor(S.t*22) % 2) ? 0xff6a55 : 0xffffff);
 }
 
 function placeCamera(sizeNorm){
@@ -1652,7 +1649,7 @@ function finaleStep(dt){
 /* ============================================================
    boot — survive a hot republish mid-run
    ============================================================ */
-function start(saved){
+function boot(saved){
   initGL();
   S = newState();
   applyStage(0, true);
@@ -1679,6 +1676,17 @@ function start(saved){
   img.src = "assets/title.png";
 
   requestAnimationFrame(frame);
+}
+
+/* models.json holds the decoded .msh geometry; the scene needs it up front */
+function start(saved){
+  var done = function(){ boot(saved); };
+  try{
+    fetch("assets/models.json")
+      .then(function(r){ return r.json(); })
+      .then(function(j){ MODELS = j; done(); })
+      .catch(function(){ done(); });
+  }catch(e){ done(); }
 }
 
 var hot = window.claude && window.claude.hot;
