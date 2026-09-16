@@ -333,7 +333,7 @@
 
     <div id="flash"></div>
     <div id="banner"></div>
-    <img id="itemart" src="assets/item_jump.png" alt="">
+    <img id="itemart" src="assets/orig/1109jump.png" alt="">
 
     <!-- ============ HUD ============ -->
     <div class="layer" id="hud" hidden>
@@ -393,7 +393,7 @@
           撞到障礙物<b style="color:#ff8b6a">速度直接歸零</b>、體積打回最小 —— 不扣時間，但時鐘不會停，重新加速就是代價。
         </p>
         <div class="boxhead">
-          <img src="assets/item_block.png" alt="">
+          <img src="assets/orig/itembox.png" alt="">
           <p><b style="color:var(--duck)">問號方塊</b>撞下去開出一個道具。原作用
           <code>math.random(0, 4)</code> 從五個裡面等機率挑一個，好壞都有。</p>
         </div>
@@ -498,14 +498,14 @@ function saveRuns(r){ try{ localStorage.setItem(STORE, JSON.stringify(r.slice(0,
    the conference-paper deck.
    ---------------------------------------------------------------- */
 var STAGES = [
-  { name:"下水道", en:"SEWER", len:600, halfW:4.2, music:"scene01",
+  { name:"下水道", en:"SEWER", len:600, halfW:4.7, music:"scene01",
     zenith:"#0e0f11", horizon:"#33363a", decor:"none",
     fog:0x2a2c2f, fogNear:16, fogFar:95,
     water:0x8f979c, wall:0x2b2a28, wallTop:0x3b3835,
     amb:0x596069, ambI:0.74, sun:0xb9c2cc, sunI:0.55,
     rock:0x4c6b2f, slab:0x141312, drum:0x8d2219, trees:false },
 
-  { name:"排水溝", en:"DRAIN", len:590, halfW:2.2, music:"scene02",
+  { name:"排水溝", en:"DRAIN", len:590, halfW:4.7, music:"scene02",
     zenith:"#2a0803", horizon:"#ff9a2a", decor:"fire",
     fog:0xa83a12, fogNear:24, fogFar:140,
     water:0x9c8570, wall:0x5a3d23, wallTop:0x74502f,
@@ -588,8 +588,15 @@ var ITEM_TIME  = 1.0;     // onitem_enable posts onitem_disable one second later
 var SPD_ITEM   = 1.5;     // item 21 sets Speed to -1.5 ...
 var SPD_AFTER  = 1.0;     // ... and onitem_disable drops it to -1
 
-/* ---------- track shape ---------- */
-function halfW(){ return (S ? STAGES[Math.min(S.stage,3)].halfW : 4.2) + 1.6; }
+/* ---------- track shape ----------
+   BOUND is the playable half-width. The walls stand WALL_PAD beyond it and
+   obstacles spawn inside it, so what you see, what you can reach and what can
+   hit you are all the same channel. The original gave room 2 a half-width of
+   2.2, which is unplayable at this camera distance, so every room uses room 3's
+   4.7 instead — a deliberate change, noted in the README. */
+var WALL_PAD = 1.6;
+function bound(){ return (S ? STAGES[Math.min(S.stage,3)].halfW : 4.7); }
+function halfW(){ return bound() + WALL_PAD; }
 function centerX(z){ return Math.sin(z*0.0102)*6.4 + Math.sin(z*0.0271+1.3)*2.1; }
 
 /* ============================================================
@@ -835,7 +842,7 @@ function initGL(){
   }
 
   // the golden ? box, using the original 3ds Max render as a billboard
-  boxTex = new THREE.TextureLoader().load("assets/item_block.png");
+  boxTex = new THREE.TextureLoader().load("assets/orig/itembox.png");
   for(i=0;i<5;i++){
     m = new THREE.Mesh(
       new THREE.PlaneGeometry(2.5, 4.1),
@@ -963,12 +970,14 @@ $("gyrobtn").addEventListener("click", function(){
    from the .stk as plain OGG Vorbis.
    ---------------------------------------------------------------- */
 var music = null, musicName = "", musicOn = true;
+/* Ogg Vorbis does not decode in Safari, so the five tracks ship as MP3 —
+   the one format every browser handles, phones included. */
 function playMusic(name){
   if(!musicOn || musicName === name) return;
   musicName = name;
   try{
     if(!music){ music = new Audio(); music.loop = true; music.volume = 0.42; }
-    music.src = "assets/audio/" + name + ".ogg";
+    music.src = "assets/audio/" + name + ".mp3";
     var pr = music.play();
     if(pr && pr.catch) pr.catch(function(){});
   }catch(e){}
@@ -996,6 +1005,8 @@ $("pausebtn").addEventListener("click", function(e){ e.stopPropagation(); toggle
 document.addEventListener("click", function(e){
   var btn = e.target.closest ? e.target.closest("[data-go]") : null;
   if(!btn) return;
+  // AI_State_Menu_onEnter does music.play; browsers need a gesture first
+  if(S && S.mode !== "play" && btn.dataset.go !== "play") playMusic("Menu");
   var go = btn.dataset.go;
   if(go === "play") startRun();
   else if(go === "resume") togglePause();
@@ -1101,7 +1112,7 @@ function spawnObstacle(z, lane){
   var m = freeOf(obstacles); if(!m) return;
   var d = m.userData, st = STAGES[S.stage];
   d.live = true; m.visible = true;
-  d.lat = lane !== undefined ? lane : (Math.random()*2 - 1) * (halfW() - 1.2);
+  d.lat = lane !== undefined ? lane : (Math.random()*2 - 1) * (bound() - 0.7);
   d.z = z;
   if(d.kind === 0){
     var sc = 0.9 + Math.random()*1.0;
@@ -1124,7 +1135,7 @@ function spawnBox(z){
   var m = freeOf(boxes); if(!m) return;
   var d = m.userData;
   d.live = true; d.z = z;
-  d.lat = (Math.random()*2 - 1) * (halfW() - 2.0);
+  d.lat = (Math.random()*2 - 1) * (bound() - 1.4);
   m.visible = true;
   m.position.set(centerX(z) + d.lat, 2.3, z);
 }
@@ -1345,7 +1356,7 @@ function step(dt){
   input = Math.max(-1, Math.min(1, input));
   S.steer += (input - S.steer) * Math.min(1, dt*9);
 
-  var bound = STAGES[Math.min(S.stage,3)].halfW;
+  var lim0 = bound();
 
   /* Scale and acceleration. The original applied x1.1 / /1.3 / -0.003 once
      per event; stepping those discretely looks chunky, so apply the same
@@ -1375,7 +1386,7 @@ function step(dt){
   while(S.acc >= TICK && guard++ < 8){
     S.acc -= TICK;
     S.lateral -= S.steer * LAT;
-    var lim = Math.max(0.3, bound - 0.5*S.size);
+    var lim = Math.max(0.3, lim0 - 0.5*S.size);
     if(S.lateral > lim) S.lateral = lim;
     if(S.lateral < -lim) S.lateral = -lim;
     if(rolling) S.z += S.speed + (S.jump > 0 ? 1.5/STEP_HZ : 0);
@@ -1420,7 +1431,7 @@ function step(dt){
     var gap = 22 - S.stage*2.2 - Math.min(6, S.z/900);
     if(S.cluster > 0){
       S.cluster--;
-      spawnObstacle(S.nextObs, (Math.random()*2-1)*(halfW()-1.2));
+      spawnObstacle(S.nextObs, (Math.random()*2-1)*(bound()-0.7));
       S.nextObs += 5.5 + Math.random()*3;
     } else if(Math.random() < 0.16 && S.z > 240){
       S.cluster = 3 + Math.floor(Math.random()*3);
@@ -1483,7 +1494,7 @@ function step(dt){
   if(shark.userData.live){
     var sd = shark.userData;
     sd.lat += sd.dir * 2.6 * dt;
-    if(Math.abs(sd.lat) > bound + 1.2) sd.dir *= -1;
+    if(Math.abs(sd.lat) > lim0 + 1.2) sd.dir *= -1;
     shark.position.set(centerX(sd.z) + sd.lat, 1.5 + Math.sin(S.t*2)*0.3, sd.z);
     if(sd.z < S.z - 14){ sd.live = false; shark.visible = false; }
     else if(Math.abs(sd.z - S.z) < 2.6 + dr && Math.abs((centerX(sd.z)+sd.lat) - dx) < 3.0 + dr){
