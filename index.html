@@ -1,0 +1,1451 @@
+<meta charset="utf-8">
+<title>Rushing 2012</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Titan+One&family=Chakra+Petch:wght@500;700&family=Noto+Sans+TC:wght@400;700&display=swap">
+<style>
+  :root{
+    --ink:#0b0706;
+    --brick:#a8391a;
+    --ember:#e8621f;
+    --duck:#f2bb22;
+    --bone:#f4e7d2;
+    --moss:#4c6b2f;
+    --display:"Titan One","Arial Black",sans-serif;
+    --ui:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
+    --han:"Noto Sans TC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--ink);color:var(--bone);
+    font-family:var(--ui);overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(ellipse at 50% 42%,#3a1c0e 0%,#150c07 55%,#080505 100%);
+  }
+
+  /* ---- stage frame: the original 480x800 phone proportion ---- */
+  #app{
+    position:relative;z-index:1;height:100%;width:100%;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #stage{
+    position:relative;overflow:hidden;
+    height:100%;width:auto;max-width:100%;
+    aspect-ratio:480/800;
+    background:#000;
+    box-shadow:0 0 0 1px #000,0 24px 70px rgba(0,0,0,.85);
+    user-select:none;touch-action:none;cursor:pointer;
+  }
+  @media (min-width:700px){ #stage{border-radius:10px;outline:1px solid #46332a} }
+  canvas#gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  .layer{position:absolute;inset:0;z-index:5}
+
+  /* ---------------- HUD ---------------- */
+  #hud{pointer-events:none;z-index:6}
+  #hud .top{
+    position:absolute;top:0;left:0;right:0;
+    padding:calc(10px + env(safe-area-inset-top,0px)) 10px 0 10px;
+    display:flex;align-items:flex-start;gap:8px;
+  }
+  #face{
+    width:19%;aspect-ratio:1;flex:none;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));
+    transform-origin:50% 50%;
+  }
+  #face.hurt{animation:shakeface .4s steps(4)}
+  #face.heal{animation:pulseface .5s ease-out}
+  @keyframes shakeface{25%{transform:translateX(-3px) rotate(-5deg)}75%{transform:translateX(3px) rotate(5deg)}}
+  @keyframes pulseface{0%{transform:scale(1)}40%{transform:scale(1.16)}100%{transform:scale(1)}}
+  .gauges{flex:1;min-width:0;margin-top:2px}
+  .hpwrap{display:flex;align-items:center;gap:5px}
+  .hpbar{
+    flex:1;height:16px;border-radius:9px;
+    border:2px solid #120b07;background:#4a1410;
+    box-shadow:inset 0 2px 0 rgba(255,255,255,.14),0 1px 3px rgba(0,0,0,.6);
+    overflow:hidden;
+  }
+  #hpfill{
+    height:100%;width:100%;border-radius:6px;
+    background:linear-gradient(#fff07a,var(--duck) 45%,#c8860c);
+    transition:width .18s ease-out,background .3s;
+  }
+  #hpfill.low{background:linear-gradient(#ff8b6a,#c0261a 55%,#7d1410)}
+  .mini{width:18px;height:18px;flex:none;border-radius:50%}
+  #scoreplate{
+    margin-top:3px;display:flex;align-items:baseline;gap:6px;
+    padding:1px 10px 2px;border-radius:5px;
+    background:linear-gradient(#83341a,#4d1c0c);
+    border:2px solid #150c07;
+    box-shadow:inset 0 1px 0 rgba(255,220,150,.3);
+    width:fit-content;
+  }
+  #score{
+    font-weight:700;font-size:clamp(17px,4.6vw,26px);
+    font-variant-numeric:tabular-nums;letter-spacing:.5px;color:var(--bone);
+    text-shadow:0 2px 0 #2a0f06;
+  }
+  #scoreplate small{
+    font-family:var(--display);font-size:clamp(9px,2.3vw,13px);
+    color:#f0a54a;letter-spacing:.06em;
+  }
+  #pausebtn{
+    pointer-events:auto;flex:none;width:11%;aspect-ratio:1;margin-top:2px;
+    border-radius:50%;border:2px solid #1a0f08;
+    background:radial-gradient(circle at 34% 30%,#e6a24f,#8d4715 70%);
+    font-size:0;cursor:pointer;
+    box-shadow:0 2px 5px rgba(0,0,0,.6);
+    display:grid;place-items:center;
+  }
+  #pausebtn::before{
+    content:"";width:52%;height:52%;
+    border:3px solid #2a1206;border-radius:50%;
+    border-top-color:transparent;border-right-color:transparent;
+    transform:rotate(-40deg);
+  }
+  #depth{
+    position:absolute;left:0;right:0;bottom:calc(8px + env(safe-area-inset-bottom,0px));
+    text-align:center;font-size:11px;letter-spacing:.14em;color:#e9c99a;
+    text-shadow:0 1px 3px #000;opacity:.8;font-variant-numeric:tabular-nums;
+  }
+
+  /* ---- call-outs: word banners, plus the original item artwork ---- */
+  #banner{
+    position:absolute;left:0;right:0;top:33%;z-index:7;
+    text-align:center;pointer-events:none;
+    font-family:var(--display);font-size:clamp(28px,9.5vw,52px);
+    color:var(--bone);
+    -webkit-text-stroke:5px #1d0f06;paint-order:stroke fill;
+    text-shadow:0 5px 0 #1d0f06;
+    opacity:0;transform:scale(.55) rotate(-7deg);
+  }
+  #banner.show{animation:pop 1.15s cubic-bezier(.2,1.5,.4,1) forwards}
+  #banner.warn{color:#ffd83a}
+  #itemart{
+    position:absolute;left:50%;top:30%;z-index:7;
+    width:62%;max-width:300px;transform:translate(-50%,0);
+    pointer-events:none;opacity:0;
+    filter:drop-shadow(0 6px 14px rgba(0,0,0,.75));
+  }
+  #itemart.show{animation:itempop 1.3s cubic-bezier(.2,1.4,.4,1) forwards}
+  @keyframes pop{
+    0%{opacity:0;transform:scale(.5) rotate(-9deg)}
+    18%{opacity:1;transform:scale(1.14) rotate(3deg)}
+    32%{transform:scale(1) rotate(0)}
+    78%{opacity:1;transform:scale(1) rotate(0)}
+    100%{opacity:0;transform:scale(1.05) translateY(-14px)}
+  }
+  @keyframes itempop{
+    0%{opacity:0;transform:translate(-50%,10px) scale(.45) rotate(-10deg)}
+    16%{opacity:1;transform:translate(-50%,0) scale(1.16) rotate(4deg)}
+    30%{transform:translate(-50%,0) scale(1) rotate(0)}
+    72%{opacity:1;transform:translate(-50%,0) scale(1) rotate(0)}
+    100%{opacity:0;transform:translate(-50%,-26px) scale(1.04)}
+  }
+  #flash{position:absolute;inset:0;z-index:6;pointer-events:none;background:#c0261a;opacity:0}
+  #flash.hit{animation:fl .34s ease-out}
+  #flash.good{background:#7ad04a;animation:fl .34s ease-out}
+  @keyframes fl{0%{opacity:.5}100%{opacity:0}}
+
+  /* ---------------- screen furniture ---------------- */
+  .screen{
+    position:absolute;inset:0;z-index:8;
+    display:flex;flex-direction:column;
+    background:
+      radial-gradient(ellipse at 50% 30%,rgba(168,57,26,.35),transparent 65%),
+      rgba(10,6,4,.9);
+    backdrop-filter:blur(2px);
+  }
+  .screen.solid{
+    background:
+      linear-gradient(180deg,
+        #100804 0%, #100804 40%,
+        rgba(14,8,4,.92) 50%,
+        rgba(12,7,4,.70) 64%,
+        rgba(10,6,4,.78) 100%);
+  }
+
+  /* wooden signposts, as on the 2012 menu */
+  .sign{
+    position:relative;display:block;width:78%;margin:0 auto;
+    padding:clamp(8px,1.7vh,13px) 18px clamp(9px,1.9vh,15px);border:0;cursor:pointer;
+    font-family:var(--display);
+    font-size:clamp(15px,4.6vw,25px);letter-spacing:.03em;color:#4a2109;
+    background:
+      linear-gradient(103deg,transparent 0 6px,#d8a566 6px 12px,transparent 12px),
+      repeating-linear-gradient(94deg,#c99657 0 7px,#bd8a4c 7px 13px,#d3a267 13px 19px);
+    clip-path:polygon(0 12%,4% 0,96% 6%,100% 22%,99% 84%,95% 100%,4% 94%,0 80%);
+    text-shadow:0 1px 0 #e8c391,0 -1px 0 #7a4a1e;
+    box-shadow:0 6px 0 rgba(0,0,0,.45);
+    transition:transform .12s ease,filter .12s ease;
+  }
+  .sign+.sign{margin-top:clamp(8px,2.2vh,14px)}
+  .sign:nth-child(even){transform:rotate(1.6deg)}
+  .sign:nth-child(odd){transform:rotate(-1.3deg)}
+  .sign:hover{filter:brightness(1.1)}
+  .sign:active{transform:translateY(3px) scale(.985)}
+  .sign:focus-visible{outline:3px solid var(--duck);outline-offset:4px}
+  .sign.small{width:60%;font-size:clamp(14px,3.8vw,18px);padding:9px 14px 11px}
+
+  .plank{font-family:var(--han);font-size:13px;line-height:1.75;color:#e5cfae}
+  h2.head{
+    font-family:var(--display);margin:0;color:var(--duck);
+    font-size:clamp(22px,7vw,34px);
+    -webkit-text-stroke:4px #1d0f06;paint-order:stroke fill;
+    text-shadow:0 4px 0 #1d0f06;text-wrap:balance;
+  }
+  .eyebrow{
+    font-size:11px;letter-spacing:.24em;text-transform:uppercase;
+    color:#e08a3c;font-weight:700;
+  }
+
+  /* ---------------- title ---------------- */
+  #title{padding-bottom:8px;overflow:hidden}
+  #titleart{
+    width:100%;display:block;flex:none;
+    max-height:min(42%,330px);object-fit:cover;object-position:50% 18%;
+    -webkit-mask-image:linear-gradient(#000 82%,transparent);
+    mask-image:linear-gradient(#000 82%,transparent);
+  }
+  #subtitle{
+    flex:none;text-align:center;margin-top:6px;
+    font-family:var(--han);font-weight:700;font-size:13px;
+    letter-spacing:.3em;color:#e0a45c;text-indent:.3em;
+  }
+  #menu{
+    flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+    display:flex;padding:10px 16px;
+  }
+  #menu::-webkit-scrollbar{width:0}
+  /* margin:auto centres without clipping the top when content overflows */
+  #menuinner{margin:auto 0;width:100%}
+  .credit{flex:none;text-align:center;padding:0 16px 10px}
+  .credit img{width:64px;opacity:.72;display:block;margin:0 auto 4px}
+  .credit p{
+    margin:0;font-family:var(--han);font-size:10px;line-height:1.55;
+    color:#9c8367;letter-spacing:.02em;
+  }
+
+  /* ---------------- sheets ---------------- */
+  .sheet{
+    flex:1;overflow-y:auto;padding:0 16px;
+    padding-block:clamp(18px,5vh,34px);
+    display:flex;flex-direction:column;gap:16px;
+  }
+  .sheet::-webkit-scrollbar{width:6px}
+  .sheet::-webkit-scrollbar-thumb{background:#5a3a24;border-radius:3px}
+  .keys{display:flex;flex-direction:column;gap:9px}
+  .key{
+    display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:center;
+    padding:9px 11px;border-radius:7px;
+    background:rgba(255,255,255,.045);border-left:3px solid var(--ember);
+  }
+  .key b{
+    font-weight:700;font-size:11px;letter-spacing:.06em;
+    color:#0e0805;background:var(--duck);padding:3px 8px;border-radius:4px;white-space:nowrap;
+  }
+  .key span{font-family:var(--han);font-size:12.5px;line-height:1.55;color:#e5cfae}
+
+  .tradeoff{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .tradeoff div{padding:11px;border-radius:7px;font-family:var(--han);font-size:12px;line-height:1.6;color:#f0dcba}
+  .tradeoff .big{background:linear-gradient(160deg,rgba(232,98,31,.3),rgba(232,98,31,.08));border:1px solid rgba(232,98,31,.45)}
+  .tradeoff .small{background:linear-gradient(160deg,rgba(90,160,200,.22),rgba(90,160,200,.05));border:1px solid rgba(120,180,215,.35)}
+  .tradeoff strong{display:block;font-family:var(--display);font-size:15px;color:var(--bone);margin-bottom:4px}
+
+  /* the ? box table — the original item set */
+  .loot{display:flex;flex-direction:column;gap:7px}
+  .loot .row{
+    display:grid;grid-template-columns:46px 1fr;gap:11px;align-items:center;
+    padding:7px 10px;border-radius:7px;background:rgba(255,255,255,.05);
+  }
+  .loot img{width:46px;height:38px;object-fit:contain}
+  .loot span{font-family:var(--han);font-size:12px;line-height:1.5;color:#e5cfae}
+  .loot .row.bad{background:linear-gradient(90deg,rgba(192,38,26,.28),rgba(192,38,26,.06))}
+  .boxhead{display:flex;align-items:center;gap:12px}
+  .boxhead img{width:44px;flex:none}
+  .boxhead p{margin:0;font-family:var(--han);font-size:12.5px;line-height:1.6;color:#e5cfae}
+
+  .runs{display:flex;flex-direction:column;gap:6px}
+  .run{
+    display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;
+    padding:8px 11px;border-radius:6px;background:rgba(255,255,255,.05);
+  }
+  .run i{font-style:normal;font-family:var(--display);color:#c07a3a;font-size:13px}
+  .run em{font-style:normal;font-family:var(--han);font-size:11.5px;color:#b59a7a}
+  .run b{font-variant-numeric:tabular-nums;font-size:16px;font-weight:700;color:var(--duck)}
+  .run.top{background:linear-gradient(90deg,rgba(242,187,34,.22),rgba(242,187,34,.05))}
+  .run.top b{color:#ffd95c}
+  .empty{font-family:var(--han);font-size:12px;color:#8d7359;text-align:center;padding:14px 0}
+
+  #finalscore{
+    font-weight:700;font-variant-numeric:tabular-nums;
+    font-size:clamp(40px,13vw,64px);line-height:1;color:var(--duck);
+    text-shadow:0 4px 0 #1d0f06;
+  }
+  .statrow{display:flex;gap:8px;flex-wrap:wrap}
+  .stat{flex:1 1 90px;padding:9px 11px;border-radius:7px;background:rgba(255,255,255,.05)}
+  .stat i{display:block;font-style:normal;font-family:var(--han);font-size:10.5px;letter-spacing:.06em;color:#a98c6b;margin-bottom:3px}
+  .stat b{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--bone)}
+  #newbest{
+    font-family:var(--display);color:#ffd95c;font-size:14px;letter-spacing:.05em;
+    -webkit-text-stroke:3px #1d0f06;paint-order:stroke fill;
+  }
+
+  #gyrorow{
+    display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;
+    margin-top:clamp(8px,2vh,14px);font-family:var(--han);font-size:11px;color:#a98c6b;
+  }
+  #gyrobtn{
+    font-weight:700;font-size:11px;letter-spacing:.04em;color:#f4e7d2;
+    background:rgba(255,255,255,.07);border:1px solid #6b4a30;
+    border-radius:999px;padding:6px 13px;cursor:pointer;
+  }
+  #gyrobtn[data-on="1"]{background:var(--moss);border-color:#86b055;color:#f2ffe2}
+
+  .loading{position:absolute;inset:0;z-index:20;background:#000;display:grid;place-items:center;transition:opacity .5s}
+  .loading img{width:56%;opacity:.9}
+  .loading.gone{opacity:0;pointer-events:none}
+
+  /* squat viewports: give the menu its room back */
+  @media (max-height:600px){
+    #titleart{max-height:27%}
+    #subtitle{font-size:11px;letter-spacing:.2em}
+    .credit img{display:none}
+    .credit p{font-size:9px}
+    #gyrorow{font-size:10px;margin-top:8px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    .sign,#hpfill{transition:none}
+    #banner.show,#itemart.show{animation-duration:.01s;opacity:1}
+    #face.hurt,#face.heal,#flash.hit,#flash.good{animation:none}
+  }
+</style>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="gl"></canvas>
+
+    <div id="flash"></div>
+    <div id="banner"></div>
+    <img id="itemart" src="assets/item_jump.png" alt="">
+
+    <!-- ============ HUD ============ -->
+    <div class="layer" id="hud" hidden>
+      <div class="top">
+        <img id="face" src="assets/duck.png" alt="">
+        <div class="gauges">
+          <div class="hpwrap">
+            <div class="hpbar"><div id="hpfill"></div></div>
+            <img class="mini" src="assets/duck.png" alt="">
+          </div>
+          <div id="scoreplate"><span id="score">0</span><small>SCORE</small></div>
+        </div>
+        <button id="pausebtn" type="button" aria-label="暫停">暫停</button>
+      </div>
+      <div id="depth"></div>
+    </div>
+
+    <!-- ============ TITLE ============ -->
+    <div class="screen solid" id="title">
+      <img id="titleart" src="assets/title.png" alt="Rushing">
+      <p id="subtitle">當奇大脫走</p>
+      <div id="menu">
+        <div id="menuinner">
+          <button class="sign" type="button" data-go="play">START</button>
+          <button class="sign" type="button" data-go="scores">SCORE BOARD</button>
+          <button class="sign" type="button" data-go="info">HOW TO PLAY</button>
+          <div id="gyrorow">
+            <button id="gyrobtn" type="button" data-on="0">啟用陀螺儀</button>
+            <span>手機可以用傾斜操控</span>
+          </div>
+        </div>
+      </div>
+      <div class="credit">
+        <img src="assets/thyy.png" alt="THYY">
+        <p>2012 世新大學新聞傳播學院 數位多媒體設計學系<br>
+        蔡方文 · 洪偉強 · 楊嘉瑋 · 楊國瑜 &nbsp;|&nbsp; ShiVa3D · 3ds Max</p>
+      </div>
+    </div>
+
+    <!-- ============ HOW TO PLAY ============ -->
+    <div class="screen" id="info" hidden>
+      <div class="sheet">
+        <div>
+          <p class="eyebrow">Rushing · 2012</p>
+          <h2 class="head">浴室出發，衝到大海</h2>
+        </div>
+        <p class="plank" style="margin:0">
+          你是一隻上了發條的浴室玩具鴨，當奇。待在浴缸裡一輩子太浪費生命了，
+          於是順著家裡排水的流向，經過下水道、排水溝、河道，一路衝向大海的小島。
+        </p>
+        <div class="tradeoff">
+          <div class="big"><strong>長壓 → 變大</strong>體積變大、速度變快，但撞到東西的機率也變高。</div>
+          <div class="small"><strong>放開 → 縮小</strong>身體縮小好閃躲，代價是速度掉下來。</div>
+        </div>
+        <p class="plank" style="margin:0">
+          想拿高分就得一直在「衝快」和「閃得過」之間取捨 —— 這是整個遊戲唯一的難題。
+        </p>
+        <div class="boxhead">
+          <img src="assets/item_block.png" alt="">
+          <p><b style="color:var(--duck)">問號方塊</b>撞下去會隨機開出一個道具，好壞都有，看你敢不敢賭。</p>
+        </div>
+        <div class="loot">
+          <div class="row"><img src="assets/item_speed.png" alt=""><span><b>SPEED UP</b> — 短暫加速，期間分數雙倍</span></div>
+          <div class="row"><img src="assets/item_jump.png" alt=""><span><b>JUMP</b> — 起飛越過障礙物，滯空時無敵</span></div>
+          <div class="row"><img src="assets/item_life.png" alt=""><span><b>LIFE+10</b> — 補血十點</span></div>
+          <div class="row bad"><img src="assets/item_dmg.png" alt=""><span><b>LIFE−10</b> — 扣血十點，賭輸了</span></div>
+        </div>
+        <div class="keys">
+          <div class="key"><b>按住 / SPACE</b><span>變大加速，放開縮小減速</span></div>
+          <div class="key"><b>← →  /  A D</b><span>左右閃避</span></div>
+          <div class="key"><b>傾斜手機</b><span>陀螺儀操控（需先在首頁授權）</span></div>
+        </div>
+        <button class="sign small" type="button" data-go="title" style="margin-top:4px">BACK</button>
+      </div>
+    </div>
+
+    <!-- ============ SCORE BOARD ============ -->
+    <div class="screen" id="scores" hidden>
+      <div class="sheet">
+        <div>
+          <p class="eyebrow">Score Board</p>
+          <h2 class="head">前三高分</h2>
+        </div>
+        <div class="runs" id="runlist"></div>
+        <p class="plank" style="margin:0;font-size:11px;color:#8d7359">
+          跟當年一樣只留前三名，存在這台裝置裡。
+        </p>
+        <button class="sign small" type="button" data-go="title">BACK</button>
+      </div>
+    </div>
+
+    <!-- ============ PAUSE ============ -->
+    <div class="screen" id="pause" hidden>
+      <div class="sheet" style="justify-content:center;text-align:center;align-items:center">
+        <h2 class="head">PAUSED</h2>
+        <button class="sign" type="button" data-go="resume" style="width:70%">RESUME</button>
+        <button class="sign" type="button" data-go="title" style="width:70%">QUIT</button>
+      </div>
+    </div>
+
+    <!-- ============ RESULT ============ -->
+    <div class="screen" id="over" hidden>
+      <div class="sheet">
+        <div>
+          <p class="eyebrow" id="overkind">Game Over</p>
+          <h2 class="head" id="overtitle">沉了</h2>
+        </div>
+        <div>
+          <div id="finalscore">0</div>
+          <div id="newbest" hidden>NEW BEST!</div>
+        </div>
+        <div class="statrow">
+          <div class="stat"><i>抵達距離</i><b id="ovdist">0 m</b></div>
+          <div class="stat"><i>最遠場景</i><b id="ovstage">下水道</b></div>
+          <div class="stat"><i>撞擊次數</i><b id="ovhits">0</b></div>
+        </div>
+        <button class="sign" type="button" data-go="play">RETRY</button>
+        <button class="sign" type="button" data-go="title">TITLE</button>
+      </div>
+    </div>
+
+    <div class="loading" id="loading"><img src="assets/thyy.png" alt="THYY"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   Rushing — 2012 graduation project, rebuilt for the web.
+   Original: ShiVa3D + 3ds Max, portrait Android.
+   Core mechanic from the design doc: hold to grow (faster, fatter
+   hitbox), release to shrink (slower, slips through). Four scenes
+   follow household water out to the sea. The ? box rolls one of
+   four items — two good, one great, one that costs you.
+   ============================================================ */
+
+var $ = function(id){ return document.getElementById(id); };
+var stageEl = $("stage");
+
+/* ---------- top three runs, as the original kept them ---------- */
+var STORE = "rushing2012.runs";
+function loadRuns(){
+  try{ var r = JSON.parse(localStorage.getItem(STORE) || "[]"); return Array.isArray(r) ? r : []; }
+  catch(e){ return []; }
+}
+function saveRuns(r){ try{ localStorage.setItem(STORE, JSON.stringify(r.slice(0,3))); }catch(e){} }
+
+/* ---------- the four scenes, colour-matched to the 2012 renders ---------- */
+var STAGES = [
+  { name:"下水道", en:"SEWER", end:900,
+    zenith:"#0e0f11", horizon:"#33363a", decor:"none",
+    fog:0x2a2c2f, fogNear:16, fogFar:95,
+    water:0x6e7276, wall:0x2b2a28, wallTop:0x3b3835,
+    amb:0x596069, ambI:0.74, sun:0xb9c2cc, sunI:0.55,
+    rock:0x4c6b2f, slab:0x141312, drum:0x8d2219, trees:false },
+
+  { name:"排水溝", en:"DRAIN", end:1950,
+    zenith:"#2a0803", horizon:"#ff9a2a", decor:"fire",
+    fog:0xa83a12, fogNear:24, fogFar:140,
+    water:0x6d5442, wall:0x5a3d23, wallTop:0x74502f,
+    amb:0xff8a44, ambI:0.9, sun:0xffb168, sunI:1.3,
+    rock:0x3b2c1e, slab:0x201509, drum:0x2a1a0c, trees:false },
+
+  { name:"河道", en:"RIVER", end:3150,
+    zenith:"#1d63b4", horizon:"#bfe3f5", decor:"clouds",
+    fog:0xa8d6ee, fogNear:34, fogFar:185,
+    water:0x6fb6c4, wall:0x7b5a33, wallTop:0x4f7a2c,
+    amb:0xcfe6ff, ambI:0.98, sun:0xfff3d6, sunI:1.25,
+    rock:0x17181a, slab:0x2a2724, drum:0x2f2a24, trees:true },
+
+  { name:"大海", en:"THE SEA", end:4300,
+    zenith:"#060a24", horizon:"#1d2f6b", decor:"night",
+    fog:0x16204a, fogNear:38, fogFar:210,
+    water:0x22335f, wall:0x121a3a, wallTop:0x1a2450,
+    amb:0x8fa0e0, ambI:0.72, sun:0xdfe4ff, sunI:0.8,
+    rock:0x10142c, slab:0x0c1026, drum:0x151b3c, trees:false }
+];
+
+/* ---------- the ? box loot table ---------- */
+var LOOT = [
+  { id:"speed", art:"assets/item_speed.png", w:28 },
+  { id:"jump",  art:"assets/item_jump.png",  w:26 },
+  { id:"life",  art:"assets/item_life.png",  w:26 },
+  { id:"dmg",   art:"assets/item_dmg.png",   w:20 }
+];
+var LOOT_TOTAL = LOOT.reduce(function(a,b){ return a + b.w; }, 0);
+function rollLoot(){
+  var r = Math.random()*LOOT_TOTAL;
+  for(var i=0;i<LOOT.length;i++){ r -= LOOT[i].w; if(r <= 0) return LOOT[i]; }
+  return LOOT[0];
+}
+
+/* ---------- track shape ---------- */
+var HALFW = 5.2;
+function centerX(z){ return Math.sin(z*0.0102)*6.4 + Math.sin(z*0.0271+1.3)*2.1; }
+
+/* ============================================================
+   scene
+   ============================================================ */
+var renderer, scene, camera, sunLight, ambLight, hemi;
+var water, waterMat, waterTex;
+var skyA, skyB, skyMix = 1, skyTex = [];
+var duck, duckKey, duckBody, foamCone;
+var walls = [], banks = [], rings = [], trees = [], obstacles = [], boxes = [], spray;
+var wallsMat, capsMat, ringsMat, boxTex;
+
+/* ---- painted sky domes, one canvas per scene ---- */
+function makeSkyTexture(s){
+  var c = document.createElement("canvas"); c.width = 512; c.height = 512;
+  var g = c.getContext("2d");
+  var grad = g.createLinearGradient(0, 0, 0, 512);
+  grad.addColorStop(0, s.zenith);
+  grad.addColorStop(0.52, s.horizon);
+  grad.addColorStop(1, s.horizon);
+  g.fillStyle = grad; g.fillRect(0, 0, 512, 512);
+  var i, x, y, r;
+
+  if(s.decor === "fire"){
+    // torn dark cloud banks over a burning horizon, as in the 排水溝 render
+    for(i=0;i<46;i++){
+      y = 120 + Math.random()*150;
+      g.fillStyle = "rgba(" + (24+Math.random()*40|0) + ",6,3," + (0.14+Math.random()*0.3).toFixed(2) + ")";
+      g.beginPath();
+      g.ellipse(Math.random()*512, y, 40+Math.random()*130, 7+Math.random()*16, 0, 0, 6.3);
+      g.fill();
+    }
+    g.fillStyle = "rgba(255,226,150,0.85)";
+    g.beginPath(); g.ellipse(256, 268, 96, 26, 0, 0, 6.3); g.fill();
+  } else if(s.decor === "clouds"){
+    for(i=0;i<20;i++){
+      x = Math.random()*512; y = 60 + Math.random()*170; r = 16 + Math.random()*30;
+      g.fillStyle = "rgba(255,255,255," + (0.5+Math.random()*0.42).toFixed(2) + ")";
+      for(var k=0;k<5;k++){
+        g.beginPath();
+        g.ellipse(x + (k-2)*r*0.62, y + Math.sin(k)*r*0.24, r*(0.55+Math.random()*0.5), r*0.5, 0, 0, 6.3);
+        g.fill();
+      }
+    }
+  } else if(s.decor === "night"){
+    for(i=0;i<420;i++){
+      x = Math.random()*512; y = Math.random()*300;
+      r = Math.random() < 0.9 ? 0.7 : 1.5;
+      g.fillStyle = "rgba(255,255,255," + (0.25+Math.random()*0.7).toFixed(2) + ")";
+      g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill();
+    }
+    // the big low moon from the 大海 render
+    var mg = g.createRadialGradient(256, 250, 10, 256, 250, 96);
+    mg.addColorStop(0, "rgba(255,246,196,1)");
+    mg.addColorStop(0.42, "rgba(248,232,150,0.95)");
+    mg.addColorStop(1, "rgba(240,220,130,0)");
+    g.fillStyle = mg; g.beginPath(); g.arc(256, 250, 96, 0, 6.3); g.fill();
+    g.fillStyle = "#f6edc0"; g.beginPath(); g.arc(256, 250, 42, 0, 6.3); g.fill();
+    g.fillStyle = "rgba(214,198,148,0.55)";
+    g.beginPath(); g.arc(243, 238, 11, 0, 6.3); g.fill();
+    g.beginPath(); g.arc(268, 259, 7, 0, 6.3); g.fill();
+  }
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(2, 1);
+  return t;
+}
+
+function makeStreakTexture(){
+  var c = document.createElement("canvas"); c.width = 128; c.height = 512;
+  var g = c.getContext("2d");
+  g.fillStyle = "#8d9094"; g.fillRect(0,0,128,512);
+  var i;
+  for(i=0;i<170;i++){
+    g.fillStyle = "rgba(255,255,255," + (0.04+Math.random()*0.22).toFixed(3) + ")";
+    g.fillRect(Math.random()*128, Math.random()*512, 1+Math.random()*7, 40+Math.random()*260);
+  }
+  for(i=0;i<90;i++){
+    g.fillStyle = "rgba(20,24,28,0.12)";
+    g.fillRect(Math.random()*128, Math.random()*512, 2+Math.random()*10, 60+Math.random()*200);
+  }
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(5, 9);
+  return t;
+}
+function makeDotTexture(){
+  var c = document.createElement("canvas"); c.width = c.height = 64;
+  var g = c.getContext("2d");
+  var rg = g.createRadialGradient(32,32,0,32,32,32);
+  rg.addColorStop(0,"rgba(255,255,255,1)");
+  rg.addColorStop(0.4,"rgba(255,255,255,0.55)");
+  rg.addColorStop(1,"rgba(255,255,255,0)");
+  g.fillStyle = rg; g.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+
+function buildDuck(){
+  var g = new THREE.Group();
+  var skin = new THREE.MeshLambertMaterial({ color:0xd9a410 });
+  var bill = new THREE.MeshLambertMaterial({ color:0xdd5f18 });
+  var white = new THREE.MeshLambertMaterial({ color:0xfdf6e6 });
+  var black = new THREE.MeshLambertMaterial({ color:0x15100a });
+  var metal = new THREE.MeshLambertMaterial({ color:0x8e9298 });
+
+  var body = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), skin);
+  body.scale.set(1, 0.88, 1.12); body.position.y = 0.98; g.add(body);
+
+  var head = new THREE.Mesh(new THREE.SphereGeometry(0.66, 20, 14), skin);
+  head.scale.set(1, 1.06, 0.98); head.position.set(0, 2.08, 0.16); g.add(head);
+
+  var beak = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 10), bill);
+  beak.scale.set(1.15, 0.5, 1.5); beak.position.set(0, 1.92, 0.78); g.add(beak);
+
+  var eg = new THREE.SphereGeometry(0.17, 12, 10);
+  var pg = new THREE.SphereGeometry(0.085, 10, 8);
+  [-1, 1].forEach(function(s){
+    var e = new THREE.Mesh(eg, white); e.position.set(0.26*s, 2.24, 0.52); g.add(e);
+    var p = new THREE.Mesh(pg, black); p.position.set(0.28*s, 2.23, 0.66); g.add(p);
+  });
+
+  var tail = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.72, 10), skin);
+  tail.rotation.x = -2.25; tail.position.set(0, 1.28, -1.02); g.add(tail);
+
+  [-1, 1].forEach(function(s){
+    var w = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), skin);
+    w.scale.set(0.34, 0.86, 1.05); w.position.set(0.9*s, 1.0, 0.02); g.add(w);
+  });
+
+  // the wind-up key on its back, visible in the 2012 screenshots
+  duckKey = new THREE.Group();
+  var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.32, 8), metal);
+  stem.rotation.z = Math.PI/2; duckKey.add(stem);
+  var ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.062, 7, 14), metal);
+  ring.position.x = -0.24; ring.rotation.y = Math.PI/2; duckKey.add(ring);
+  var bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.1), metal);
+  bar.position.x = -0.24; duckKey.add(bar);
+  duckKey.position.set(-1.02, 1.18, -0.28);
+  g.add(duckKey);
+
+  foamCone = new THREE.Mesh(
+    new THREE.ConeGeometry(1.05, 3.4, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.16,
+                                  side:THREE.DoubleSide, depthWrite:false })
+  );
+  foamCone.rotation.x = Math.PI/2;
+  foamCone.position.set(0, 0.42, -2.1);
+  g.add(foamCone);
+
+  duckBody = body;
+  return g;
+}
+
+function buildTree(){
+  var g = new THREE.Group();
+  var trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.34, 2.6, 6),
+    new THREE.MeshLambertMaterial({ color:0x4a3220 })
+  );
+  trunk.position.y = 1.3; g.add(trunk);
+  var leafMat = new THREE.MeshLambertMaterial({ color:0x3f6b25 });
+  for(var i=0;i<3;i++){
+    var c = new THREE.Mesh(new THREE.ConeGeometry(1.7 - i*0.36, 2.0, 7), leafMat);
+    c.position.y = 2.6 + i*0.95;
+    g.add(c);
+  }
+  return g;
+}
+
+function initGL(){
+  renderer = new THREE.WebGLRenderer({ canvas:$("gl"), antialias:true, powerPreference:"high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(STAGES[0].fog);
+  scene.fog = new THREE.Fog(STAGES[0].fog, STAGES[0].fogNear, STAGES[0].fogFar);
+  camera = new THREE.PerspectiveCamera(64, 0.6, 0.1, 460);
+
+  ambLight = new THREE.AmbientLight(STAGES[0].amb, STAGES[0].ambI); scene.add(ambLight);
+  hemi = new THREE.HemisphereLight(0xffffff, 0x2b2622, 0.35); scene.add(hemi);
+  sunLight = new THREE.DirectionalLight(STAGES[0].sun, STAGES[0].sunI);
+  sunLight.position.set(-18, 34, 22); scene.add(sunLight);
+
+  for(var s=0;s<STAGES.length;s++) skyTex[s] = makeSkyTexture(STAGES[s]);
+  var domeGeo = new THREE.SphereGeometry(340, 24, 16);
+  skyA = new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({
+    map:skyTex[0], side:THREE.BackSide, fog:false, depthWrite:false, depthTest:false }));
+  skyB = new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({
+    map:skyTex[0], side:THREE.BackSide, fog:false, depthWrite:false, depthTest:false,
+    transparent:true, opacity:0 }));
+  skyA.renderOrder = -2; skyB.renderOrder = -1;
+  scene.add(skyA); scene.add(skyB);
+
+  waterTex = makeStreakTexture();
+  waterMat = new THREE.MeshLambertMaterial({ map:waterTex, color:STAGES[0].water });
+  water = new THREE.Mesh(new THREE.PlaneGeometry(100, 360, 1, 1), waterMat);
+  water.rotation.x = -Math.PI/2;
+  scene.add(water);
+
+  var wallGeo = new THREE.BoxGeometry(3.4, 9, 8.4);
+  wallsMat = new THREE.MeshLambertMaterial({ color:STAGES[0].wall });
+  capsMat = new THREE.MeshLambertMaterial({ color:STAGES[0].wallTop });
+  var i, side, m;
+  for(i=0;i<40;i++){
+    for(side=-1; side<=1; side+=2){
+      m = new THREE.Mesh(wallGeo, wallsMat);
+      m.userData = { side:side, slot:i };
+      scene.add(m); walls.push(m);
+      var cap = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.7, 8.4), capsMat);
+      cap.userData = { side:side, slot:i };
+      scene.add(cap); banks.push(cap);
+    }
+  }
+
+  ringsMat = new THREE.MeshLambertMaterial({ color:0x18120e });
+  var ringGeo = new THREE.TorusGeometry(7.6, 0.85, 6, 14);
+  for(i=0;i<7;i++){
+    m = new THREE.Mesh(ringGeo, ringsMat);
+    m.userData = { slot:i };
+    scene.add(m); rings.push(m);
+  }
+
+  for(i=0;i<16;i++){
+    var t = buildTree();
+    t.userData = { side:(i % 2) ? 1 : -1, slot:i >> 1 };
+    t.visible = false;
+    scene.add(t); trees.push(t);
+  }
+
+  var rockGeo = new THREE.DodecahedronGeometry(1, 0);
+  var slabGeo = new THREE.BoxGeometry(3.2, 0.34, 1.5);
+  var drumGeo = new THREE.CylinderGeometry(0.9, 0.9, 1.8, 10);
+  for(i=0;i<26;i++){
+    var kind = i % 3;
+    m = new THREE.Mesh(kind === 0 ? rockGeo : kind === 1 ? slabGeo : drumGeo,
+                       new THREE.MeshLambertMaterial({ color:0x4c6b2f }));
+    m.visible = false;
+    m.userData = { kind:kind, live:false, r:1.4, rz:1, h:1 };
+    scene.add(m); obstacles.push(m);
+  }
+
+  // the golden ? box, using the original 3ds Max render as a billboard
+  boxTex = new THREE.TextureLoader().load("assets/item_block.png");
+  for(i=0;i<5;i++){
+    m = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.5, 4.1),
+      new THREE.MeshBasicMaterial({ map:boxTex, transparent:true, alphaTest:0.35, side:THREE.DoubleSide, fog:true })
+    );
+    m.rotation.y = Math.PI;
+    m.visible = false;
+    m.userData = { live:false };
+    scene.add(m); boxes.push(m);
+  }
+
+  var N = 160, pos = new Float32Array(N*3);
+  var pgeo = new THREE.BufferGeometry();
+  pgeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  spray = new THREE.Points(pgeo, new THREE.PointsMaterial({
+    size:0.42, map:makeDotTexture(), transparent:true, opacity:0.75,
+    depthWrite:false, blending:THREE.AdditiveBlending, color:0xdff2ff }));
+  spray.userData = { v:new Float32Array(N*3), n:N };
+  scene.add(spray);
+
+  duck = buildDuck();
+  scene.add(duck);
+  resize();
+}
+
+function resize(){
+  var w = stageEl.clientWidth, h = stageEl.clientHeight;
+  if(!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+if(window.ResizeObserver) new ResizeObserver(resize).observe(stageEl);
+
+/* ============================================================
+   state
+   ============================================================ */
+var S = null;
+function newState(){
+  return {
+    mode:"title",
+    z:0, lateral:0, size:0.6, sizeTarget:0.6,
+    speed:24, hp:100, score:0, hits:0, boxesHit:0,
+    stage:0,
+    boost:0, air:0, vy:0, airY:0,
+    inv:0, shake:0, t:0,
+    nextObs:60, nextBox:150, warnAt:0, cluster:0,
+    steer:0, roll:0,
+    finished:false, fallT:0
+  };
+}
+
+/* ---------- input ---------- */
+var hold = false, keyL = false, keyR = false, gyro = 0, gyroOn = false;
+var dragX = null, dragSteer = 0;
+
+function onDown(e){
+  if(!S || S.mode !== "play") return;
+  if(e.target && e.target.closest && e.target.closest("button")) return;
+  hold = true;
+  dragX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+  dragSteer = 0;
+}
+function onMove(e){
+  if(dragX === null) return;
+  var x = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+  dragSteer = Math.max(-1, Math.min(1, (x - dragX) / (stageEl.clientWidth * 0.26)));
+}
+function onUp(){ hold = false; dragX = null; dragSteer = 0; }
+
+stageEl.addEventListener("pointerdown", onDown);
+window.addEventListener("pointermove", onMove);
+window.addEventListener("pointerup", onUp);
+window.addEventListener("pointercancel", onUp);
+stageEl.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+
+window.addEventListener("keydown", function(e){
+  if(e.code === "Space"){ hold = true; e.preventDefault(); }
+  if(e.code === "ArrowLeft" || e.code === "KeyA") keyL = true;
+  if(e.code === "ArrowRight" || e.code === "KeyD") keyR = true;
+  if(e.code === "Escape" && S && (S.mode === "play" || S.mode === "pause")) togglePause();
+});
+window.addEventListener("keyup", function(e){
+  if(e.code === "Space") hold = false;
+  if(e.code === "ArrowLeft" || e.code === "KeyA") keyL = false;
+  if(e.code === "ArrowRight" || e.code === "KeyD") keyR = false;
+});
+
+function handleOrientation(e){
+  var g = e.gamma;
+  if(g === null || g === undefined) return;
+  gyro = Math.max(-1, Math.min(1, g / 26));
+}
+$("gyrobtn").addEventListener("click", function(){
+  var btn = this;
+  function enable(){
+    window.addEventListener("deviceorientation", handleOrientation);
+    gyroOn = true; btn.dataset.on = "1"; btn.textContent = "陀螺儀已開啟";
+  }
+  var D = window.DeviceOrientationEvent;
+  if(D && typeof D.requestPermission === "function"){
+    D.requestPermission().then(function(r){
+      if(r === "granted") enable(); else btn.textContent = "被拒絕了，用拖曳操控";
+    }).catch(function(){ btn.textContent = "這台裝置沒有陀螺儀"; });
+  } else if(D){ enable(); }
+  else { btn.textContent = "這台裝置沒有陀螺儀"; }
+});
+
+/* ============================================================
+   screens
+   ============================================================ */
+var SCREENS = ["title","info","scores","pause","over"];
+function show(which){
+  SCREENS.forEach(function(id){ $(id).hidden = (id !== which); });
+  $("hud").hidden = (which !== null && which !== "pause");
+}
+function togglePause(){
+  if(!S) return;
+  if(S.mode === "play"){ S.mode = "pause"; $("pause").hidden = false; }
+  else if(S.mode === "pause"){ S.mode = "play"; $("pause").hidden = true; last = performance.now(); }
+}
+$("pausebtn").addEventListener("click", function(e){ e.stopPropagation(); togglePause(); });
+
+document.addEventListener("click", function(e){
+  var btn = e.target.closest ? e.target.closest("[data-go]") : null;
+  if(!btn) return;
+  var go = btn.dataset.go;
+  if(go === "play") startRun();
+  else if(go === "resume") togglePause();
+  else if(go === "title"){ S = newState(); applyStage(0, true); show("title"); }
+  else if(go === "scores"){ renderScores(); show("scores"); }
+  else if(go === "info") show("info");
+});
+
+function renderScores(){
+  var runs = loadRuns(), list = $("runlist");
+  if(!runs.length){ list.innerHTML = '<p class="empty">還沒有紀錄。去衝一趟吧。</p>'; return; }
+  list.innerHTML = runs.slice(0,3).map(function(r, i){
+    var sc = Number(r && r.score) || 0, ds = Number(r && r.dist) || 0;
+    var nm = String((r && r.stageName) || "下水道").slice(0, 8);
+    return '<div class="run' + (i === 0 ? ' top' : '') + '">' +
+      '<i>' + (i+1) + '</i><em>' + nm + ' · ' + ds + ' m</em>' +
+      '<b>' + sc.toLocaleString("en-US") + '</b></div>';
+  }).join("");
+}
+
+function banner(text, cls){
+  var el = $("banner");
+  el.className = ""; void el.offsetWidth;
+  el.textContent = text;
+  el.className = "show" + (cls ? " " + cls : "");
+}
+function itemBanner(src){
+  var el = $("itemart");
+  el.className = ""; void el.offsetWidth;
+  el.src = src;
+  el.className = "show";
+}
+
+/* ============================================================
+   stage dressing
+   ============================================================ */
+var cur = {};
+function applyStage(idx, instant){
+  var s = STAGES[idx];
+  if(instant){
+    cur = {
+      fog:new THREE.Color(s.fog), water:new THREE.Color(s.water),
+      wall:new THREE.Color(s.wall), cap:new THREE.Color(s.wallTop),
+      amb:new THREE.Color(s.amb), sun:new THREE.Color(s.sun),
+      ambI:s.ambI, sunI:s.sunI, near:s.fogNear, far:s.fogFar
+    };
+    skyA.material.map = skyTex[idx];
+    skyB.material.opacity = 0;
+    skyMix = 1;
+  } else {
+    skyB.material.map = skyTex[idx];
+    skyB.material.opacity = 0;
+    skyMix = 0;
+  }
+  cur.idx = idx;
+  cur.target = s;
+  cur.tFog = new THREE.Color(s.fog);
+  cur.tWater = new THREE.Color(s.water);
+  cur.tWall = new THREE.Color(s.wall);
+  cur.tCap = new THREE.Color(s.wallTop);
+  cur.tAmb = new THREE.Color(s.amb);
+  cur.tSun = new THREE.Color(s.sun);
+}
+function blendStage(dt){
+  var s = cur.target; if(!s) return;
+  var k = Math.min(1, dt*0.95);
+  cur.fog.lerp(cur.tFog, k);
+  cur.water.lerp(cur.tWater, k);
+  cur.wall.lerp(cur.tWall, k);
+  cur.cap.lerp(cur.tCap, k);
+  cur.amb.lerp(cur.tAmb, k);
+  cur.sun.lerp(cur.tSun, k);
+  cur.ambI += (s.ambI - cur.ambI) * k;
+  cur.sunI += (s.sunI - cur.sunI) * k;
+  cur.near += (s.fogNear - cur.near) * k;
+  cur.far  += (s.fogFar  - cur.far ) * k;
+
+  if(skyMix < 1){
+    skyMix = Math.min(1, skyMix + dt*0.6);
+    skyB.material.opacity = skyMix;
+    if(skyMix >= 1){ skyA.material.map = skyB.material.map; skyB.material.opacity = 0; }
+  }
+
+  scene.background.copy(cur.fog);
+  scene.fog.color.copy(cur.fog);
+  scene.fog.near = cur.near; scene.fog.far = cur.far;
+  waterMat.color.copy(cur.water);
+  wallsMat.color.copy(cur.wall);
+  capsMat.color.copy(cur.cap);
+  ambLight.color.copy(cur.amb); ambLight.intensity = cur.ambI;
+  sunLight.color.copy(cur.sun); sunLight.intensity = cur.sunI;
+}
+
+/* ============================================================
+   spawning
+   ============================================================ */
+function freeOf(pool){
+  for(var i=0;i<pool.length;i++) if(!pool[i].userData.live) return pool[i];
+  return null;
+}
+function spawnObstacle(z, lane){
+  var m = freeOf(obstacles); if(!m) return;
+  var d = m.userData, st = STAGES[S.stage];
+  d.live = true; m.visible = true;
+  d.lat = lane !== undefined ? lane : (Math.random()*2 - 1) * (HALFW - 1.2);
+  d.z = z;
+  if(d.kind === 0){
+    var sc = 0.9 + Math.random()*1.0;
+    m.scale.set(sc*1.5, sc*0.85, sc*1.25);
+    m.material.color.setHex(st.rock);
+    d.r = sc*1.35; d.rz = sc*1.2; d.h = sc*1.1;
+  } else if(d.kind === 1){
+    m.scale.set(0.8 + Math.random()*0.7, 1, 1);
+    m.material.color.setHex(st.slab);
+    d.r = 1.7; d.rz = 0.9; d.h = 0.3;
+  } else {
+    m.scale.set(1, 0.8 + Math.random()*0.5, 1);
+    m.material.color.setHex(st.drum);
+    d.r = 1.0; d.rz = 1.0; d.h = 0.9;
+  }
+  m.rotation.y = Math.random()*Math.PI;
+  m.position.set(centerX(z) + d.lat, d.h*0.45, z);
+}
+function spawnBox(z){
+  var m = freeOf(boxes); if(!m) return;
+  var d = m.userData;
+  d.live = true; d.z = z;
+  d.lat = (Math.random()*2 - 1) * (HALFW - 2.0);
+  m.visible = true;
+  m.position.set(centerX(z) + d.lat, 2.3, z);
+}
+
+/* ============================================================
+   run
+   ============================================================ */
+function startRun(){
+  S = newState();
+  S.mode = "play";
+  applyStage(0, true);
+  obstacles.forEach(function(m){ m.userData.live = false; m.visible = false; });
+  boxes.forEach(function(m){ m.userData.live = false; m.visible = false; });
+  resetSpray();
+  show(null);
+  updateHUD(true);
+  banner("GO!");
+  last = performance.now();
+}
+
+function resetSpray(){
+  var p = spray.geometry.attributes.position.array, v = spray.userData.v, n = spray.userData.n;
+  for(var i=0;i<n;i++){ p[i*3] = 0; p[i*3+1] = -999; p[i*3+2] = 0; v[i*3] = v[i*3+1] = v[i*3+2] = 0; }
+  spray.geometry.attributes.position.needsUpdate = true;
+}
+var sprayHead = 0;
+function emitSpray(x, y, z, power){
+  var p = spray.geometry.attributes.position.array, v = spray.userData.v, n = spray.userData.n;
+  var count = Math.min(4, 1 + Math.floor(power*3));
+  for(var k=0;k<count;k++){
+    var i = sprayHead % n; sprayHead++;
+    p[i*3]   = x + (Math.random()-0.5)*1.6;
+    p[i*3+1] = y + Math.random()*0.4;
+    p[i*3+2] = z - 1.4 - Math.random()*1.2;
+    v[i*3]   = (Math.random()-0.5)*5.5;
+    v[i*3+1] = 2.2 + Math.random()*4.2;
+    v[i*3+2] = -6 - Math.random()*7;
+  }
+}
+function stepSpray(dt){
+  var p = spray.geometry.attributes.position.array, v = spray.userData.v, n = spray.userData.n;
+  for(var i=0;i<n;i++){
+    if(p[i*3+1] < -900) continue;
+    v[i*3+1] -= 15*dt;
+    p[i*3]   += v[i*3]*dt;
+    p[i*3+1] += v[i*3+1]*dt;
+    p[i*3+2] += v[i*3+2]*dt;
+    if(p[i*3+1] < 0.05) p[i*3+1] = -999;
+  }
+  spray.geometry.attributes.position.needsUpdate = true;
+}
+
+function flash(cls){
+  var f = $("flash");
+  f.className = ""; void f.offsetWidth; f.className = cls;
+  setTimeout(function(){ f.className = ""; }, 420);
+}
+function hurt(dmg, fromItem){
+  if(S.inv > 0 && !fromItem) return;
+  S.hp -= dmg;
+  if(!fromItem){
+    S.hits++;
+    S.inv = 0.95; S.shake = 1;
+    S.speed *= 0.62;
+    S.sizeTarget = Math.max(0.55, S.sizeTarget - 0.22);
+  }
+  flash("hit");
+  var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "hurt";
+  if(S.hp <= 0){ S.hp = 0; endRun(false); }
+}
+
+/* ---- the ? box payout ---- */
+function openBox(){
+  S.boxesHit++;
+  S.score += 1500;
+  var item = rollLoot();
+  itemBanner(item.art);
+  if(item.id === "speed"){
+    S.boost = 3.6; S.speed *= 1.3;
+  } else if(item.id === "jump"){
+    S.air = 1.5; S.vy = 13; S.airY = 0.1; S.inv = 1.6;
+  } else if(item.id === "life"){
+    S.hp = Math.min(100, S.hp + 10);
+    flash("good");
+    var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "heal";
+  } else {
+    hurt(10, true);
+  }
+}
+
+function endRun(cleared){
+  S.mode = "over";
+  var dist = Math.floor(S.z/4);
+  var score = Math.floor(S.score) + (cleared ? 25000 : 0);
+  $("overkind").textContent = cleared ? "Stage Clear" : "Game Over";
+  $("overtitle").textContent = cleared ? "當奇抵達小島" : "當奇沉了";
+  $("finalscore").textContent = score.toLocaleString("en-US");
+  $("ovdist").textContent = dist + " m";
+  $("ovstage").textContent = STAGES[Math.min(S.stage, 3)].name;
+  $("ovhits").textContent = S.hits;
+
+  var runs = loadRuns();
+  var best = runs.length ? (Number(runs[0].score) || 0) : 0;
+  $("newbest").hidden = !(score > best);
+  runs.push({ score:score, dist:dist, stageName:STAGES[Math.min(S.stage,3)].name });
+  runs.sort(function(a,b){ return (Number(b.score)||0) - (Number(a.score)||0); });
+  saveRuns(runs);
+  show("over");
+}
+
+/* ---------- HUD ---------- */
+var lastScore = -1, lastHp = -1, lastDist = -1, lastStage = -1;
+function updateHUD(force){
+  var sc = Math.floor(S.score);
+  if(force || sc !== lastScore){ $("score").textContent = sc.toLocaleString("en-US"); lastScore = sc; }
+  var hp = Math.max(0, Math.round(S.hp));
+  if(force || hp !== lastHp){
+    var fill = $("hpfill");
+    fill.style.width = hp + "%";
+    fill.classList.toggle("low", hp <= 32);
+    lastHp = hp;
+  }
+  var d = Math.floor(S.z/4);
+  if(force || d !== lastDist || S.stage !== lastStage){
+    $("depth").textContent = "第 " + (Math.min(S.stage,3)+1) + " 關 · " +
+      STAGES[Math.min(S.stage,3)].name + "   |   " + d + " M";
+    lastDist = d; lastStage = S.stage;
+  }
+}
+
+/* ============================================================
+   loop
+   ============================================================ */
+var last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  var dt = Math.min(0.05, (now - last)/1000);
+  last = now;
+  if(!S) return;
+  if(S.mode === "play") step(dt);
+  else if(S.mode === "title" || S.mode === "info" || S.mode === "scores") idleStep(dt);
+  blendStage(dt);
+  renderer.render(scene, camera);
+}
+
+function idleStep(dt){
+  S.t += dt;
+  S.z += dt*9;
+  S.size += (0.85 - S.size)*dt*2;
+  layoutWorld();
+  duck.position.set(centerX(S.z), Math.sin(S.t*2)*0.12, S.z);
+  duck.rotation.y = Math.sin(S.t*0.6)*0.25;
+  duck.scale.setScalar(S.size*0.85);
+  camera.position.set(centerX(S.z - 9), 4.6, S.z - 11);
+  camera.lookAt(centerX(S.z + 6), 1.6, S.z + 6);
+  waterTex.offset.y -= dt*0.35;
+  stepSpray(dt);
+}
+
+function step(dt){
+  S.t += dt;
+
+  var st = S.stage;
+  while(st < 3 && S.z > STAGES[st].end) st++;
+  if(st !== S.stage){
+    S.stage = st;
+    applyStage(st, false);
+    banner(STAGES[st].en);
+    S.score += 8000;
+  }
+  if(!S.finished && S.z > STAGES[3].end){ startFinale(); }
+  if(S.finished){ finaleStep(dt); return; }
+
+  /* ---- size: the whole game is in these three lines ---- */
+  S.sizeTarget = hold ? 1.55 : 0.6;
+  S.size += (S.sizeTarget - S.size) * Math.min(1, dt*(hold ? 1.9 : 3.0));
+  var sizeNorm = (S.size - 0.6) / 0.95;
+
+  var target = (23 + sizeNorm*27) * (1 + S.stage*0.08) * (S.boost > 0 ? 1.45 : 1);
+  S.speed += (target - S.speed) * Math.min(1, dt*1.5);
+  if(S.boost > 0) S.boost -= dt;
+
+  /* ---- steering ---- */
+  var input = 0;
+  if(keyL) input -= 1;
+  if(keyR) input += 1;
+  if(gyroOn) input += gyro;
+  if(dragSteer) input += dragSteer;
+  input = Math.max(-1, Math.min(1, input));
+  S.steer += (input - S.steer) * Math.min(1, dt*9);
+  var agility = 13 / (0.75 + sizeNorm*0.75);
+  S.lateral -= S.steer * agility * dt;          // screen-right is world -X
+  var lim = HALFW - 0.62*S.size - 0.35;
+  if(S.lateral > lim) S.lateral = lim;
+  if(S.lateral < -lim) S.lateral = -lim;
+  S.roll += (S.steer*0.32 - S.roll) * Math.min(1, dt*7);
+
+  if(S.air > 0){
+    S.air -= dt;
+    S.vy -= 24*dt;
+    S.airY = Math.max(0, S.airY + S.vy*dt);
+    if(S.airY <= 0){ S.airY = 0; S.air = 0; }
+  }
+
+  S.z += S.speed * dt;
+  S.score += S.speed * dt * 14 * (S.boost > 0 ? 2 : 1);
+  if(S.inv > 0) S.inv -= dt;
+  if(S.shake > 0) S.shake = Math.max(0, S.shake - dt*3.2);
+
+  /* ---- spawn ahead ---- */
+  var ahead = S.z + 140;
+  if(S.warnAt && S.z > S.warnAt){ S.warnAt = 0; banner("WARNING", "warn"); }
+  while(S.nextObs < ahead){
+    var gap = 22 - S.stage*2.2 - Math.min(6, S.z/900);
+    if(S.cluster > 0){
+      S.cluster--;
+      spawnObstacle(S.nextObs, (Math.random()*2-1)*(HALFW-1.2));
+      S.nextObs += 5.5 + Math.random()*3;
+    } else if(Math.random() < 0.16 && S.z > 240){
+      S.cluster = 3 + Math.floor(Math.random()*3);
+      S.warnAt = S.nextObs - 95;
+      S.nextObs += 10;
+    } else {
+      spawnObstacle(S.nextObs);
+      if(Math.random() < 0.45) spawnObstacle(S.nextObs + 3 + Math.random()*4);
+      S.nextObs += gap + Math.random()*14;
+    }
+  }
+  while(S.nextBox < ahead){
+    spawnBox(S.nextBox);
+    S.nextBox += 170 + Math.random()*150;
+  }
+
+  /* ---- collisions ---- */
+  var dx = centerX(S.z) + S.lateral;
+  var dr = 0.78 * S.size;
+  var i, m, d, ddx, ddz;
+  for(i=0;i<obstacles.length;i++){
+    m = obstacles[i]; d = m.userData;
+    if(!d.live) continue;
+    if(d.z < S.z - 20){ d.live = false; m.visible = false; continue; }
+    ddz = d.z - S.z;
+    if(ddz > 6 || ddz < -3) continue;
+    if(S.airY > d.h + 0.6) continue;
+    ddx = (centerX(d.z) + d.lat) - dx;
+    if(Math.abs(ddx) < d.r + dr && Math.abs(ddz) < d.rz + dr*0.9){
+      d.live = false; m.visible = false;
+      hurt(11 + sizeNorm*9, false);
+      if(S.mode !== "play") return;
+    }
+  }
+  for(i=0;i<boxes.length;i++){
+    m = boxes[i]; d = m.userData;
+    if(!d.live) continue;
+    if(d.z < S.z - 20){ d.live = false; m.visible = false; continue; }
+    ddz = d.z - S.z;
+    if(ddz > 4 || ddz < -2) continue;
+    ddx = (centerX(d.z) + d.lat) - dx;
+    if(Math.abs(ddx) < 1.5 + dr){
+      d.live = false; m.visible = false;
+      openBox();
+      if(S.mode !== "play") return;
+    } else {
+      m.position.y = 2.3 + Math.sin(S.t*2.6 + d.z)*0.22;
+    }
+  }
+
+  layoutWorld();
+  placeDuck(sizeNorm, dt);
+  placeCamera(sizeNorm);
+  waterTex.offset.y -= dt * (S.speed*0.052);
+  if(S.airY < 0.4) emitSpray(dx, 0.3, S.z, sizeNorm*0.6 + (S.boost > 0 ? 0.5 : 0));
+  stepSpray(dt);
+  updateHUD(false);
+}
+
+function placeDuck(sizeNorm, dt){
+  var x = centerX(S.z) + S.lateral;
+  duck.scale.setScalar(S.size*0.85);
+  duck.position.set(x, S.airY + Math.sin(S.t*7)*0.07*S.size, S.z);
+  duck.rotation.z = S.roll;
+  duck.rotation.y = -S.steer*0.28;
+  duck.rotation.x = S.air > 0 ? -S.vy*0.02 : Math.sin(S.t*5)*0.03;
+  duckKey.rotation.x += dt * S.speed * 0.4;
+  foamCone.material.opacity = 0.1 + sizeNorm*0.2 + (S.boost > 0 ? 0.2 : 0);
+  foamCone.scale.set(1, 1 + (S.boost > 0 ? 0.7 : 0) + sizeNorm*0.4, 1);
+  duckBody.material.color.setHex(S.inv > 0 && (Math.floor(S.t*22) % 2) ? 0xff5c4a : 0xd9a410);
+}
+
+function placeCamera(sizeNorm){
+  var back = 10 + sizeNorm*2.4;
+  var cz = S.z - back;
+  var sh = S.shake;
+  camera.position.set(
+    centerX(cz) + S.lateral*0.55 + (Math.random()-0.5)*sh*0.8,
+    4.3 + S.airY*0.55 + sizeNorm*0.5 + (Math.random()-0.5)*sh*0.6,
+    cz
+  );
+  camera.lookAt(centerX(S.z + 16) + S.lateral*0.25, 1.9 + S.airY*0.6, S.z + 16);
+  camera.fov = 64 + (S.speed - 24)*0.32 + (S.boost > 0 ? 6 : 0);
+  camera.updateProjectionMatrix();
+}
+
+function layoutWorld(){
+  water.position.set(centerX(S.z + 60), 0, S.z + 60);
+  skyA.position.set(camera.position.x, 0, camera.position.z);
+  skyB.position.copy(skyA.position);
+  sunLight.position.set(centerX(S.z) - 18, 34, S.z + 30);
+  sunLight.target.position.set(centerX(S.z), 0, S.z);
+  sunLight.target.updateMatrixWorld();
+
+  var stage = Math.min(S.stage, 3);
+  var base = Math.floor((S.z - 30) / 8.4);
+  var i, m, d, z, wob;
+  for(i=0;i<walls.length;i++){
+    m = walls[i]; d = m.userData;
+    z = (base + d.slot) * 8.4;
+    wob = Math.sin(z*0.07 + d.side)*0.8;
+    m.position.set(centerX(z) + d.side*(HALFW + 1.7 + wob*0.3), 3.2 + wob, z);
+    m.rotation.y = -Math.atan2(centerX(z+8) - centerX(z-8), 16);
+  }
+  for(i=0;i<banks.length;i++){
+    m = banks[i]; d = m.userData;
+    z = (base + d.slot) * 8.4;
+    wob = Math.sin(z*0.07 + d.side)*0.8;
+    m.position.set(centerX(z) + d.side*(HALFW + 1.7 + wob*0.3), 7.75 + wob, z);
+    m.rotation.y = -Math.atan2(centerX(z+8) - centerX(z-8), 16);
+  }
+
+  // tree line along the 河道 banks
+  var showTrees = STAGES[stage].trees;
+  var tbase = Math.floor((S.z - 20) / 21);
+  for(i=0;i<trees.length;i++){
+    m = trees[i]; d = m.userData;
+    m.visible = showTrees;
+    if(!showTrees) continue;
+    z = (tbase + d.slot) * 21 + (d.side > 0 ? 10 : 0);
+    wob = Math.sin(z*0.07 + d.side)*0.8;
+    m.position.set(centerX(z) + d.side*(HALFW + 3.4), 7.9 + wob, z);
+    m.scale.setScalar(0.85 + (Math.sin(z*0.37)*0.5 + 0.5)*0.5);
+  }
+
+  // sewer rings, then bridge beams over the drain
+  var showRings = stage <= 1;
+  var rbase = Math.floor((S.z - 20) / 34);
+  for(i=0;i<rings.length;i++){
+    m = rings[i]; d = m.userData;
+    z = (rbase + d.slot) * 34;
+    m.visible = showRings;
+    m.position.set(centerX(z), stage === 0 ? 2.5 : 8.4, z);
+    m.scale.set(1, stage === 0 ? 1 : 0.42, stage === 0 ? 1 : 2.4);
+  }
+  ringsMat.color.setHex(stage === 0 ? 0x18120e : 0x2b1d12);
+}
+
+/* ---------- finale: over the falls, down to the island ---------- */
+function startFinale(){
+  S.finished = true; S.fallT = 0;
+  banner("THE SEA");
+}
+function finaleStep(dt){
+  S.fallT += dt;
+  S.z += S.speed*dt;
+  S.score += S.speed*dt*14;
+  S.speed += (34 - S.speed)*dt;
+  var t = S.fallT;
+  var x = centerX(S.z) + S.lateral;
+  var y = Math.max(-60, 1 - t*t*5);
+  duck.position.set(x, y, S.z);
+  duck.rotation.x = -t*0.5;
+  duck.rotation.y += dt*1.4;
+  duck.scale.setScalar(S.size*0.85);
+  camera.position.set(x - 2, Math.max(-50, 5 - t*t*4.4), S.z - 11);
+  camera.lookAt(x, y, S.z + 4);
+  layoutWorld();
+  waterTex.offset.y -= dt*0.8;
+  stepSpray(dt);
+  updateHUD(false);
+  if(t > 3.1) endRun(true);
+}
+
+/* ============================================================
+   boot — survive a hot republish mid-run
+   ============================================================ */
+function start(saved){
+  initGL();
+  S = newState();
+  applyStage(0, true);
+
+  if(saved && saved.S){
+    S = saved.S;
+    S.mode = "pause";
+    show(null);
+    $("pause").hidden = false;
+    updateHUD(true);
+  } else {
+    show("title");
+  }
+
+  var img = new Image();
+  img.onload = img.onerror = function(){
+    setTimeout(function(){ $("loading").className = "loading gone"; }, 260);
+  };
+  img.src = "assets/title.png";
+
+  requestAnimationFrame(frame);
+}
+
+var hot = window.claude && window.claude.hot;
+if(hot && hot.snapshot){
+  hot.snapshot(function(){
+    return (S && (S.mode === "play" || S.mode === "pause")) ? { S:S } : null;
+  });
+}
+if(hot && hot.ready) hot.ready(start);
+else start(hot ? hot.data : null);
+
+})();
+</script>
