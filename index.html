@@ -394,11 +394,13 @@
         </p>
         <div class="boxhead">
           <img src="assets/item_block.png" alt="">
-          <p><b style="color:var(--duck)">問號方塊</b>撞下去會隨機開出一個道具，好壞都有，看你敢不敢賭。</p>
+          <p><b style="color:var(--duck)">問號方塊</b>撞下去開出一個道具。原作用
+          <code>math.random(0, 4)</code> 從五個裡面等機率挑一個，好壞都有。</p>
         </div>
         <div class="loot">
-          <div class="row"><img src="assets/orig/1109speedup.png" alt=""><span><b>SPEED UP</b> — 短暫加速，期間分數雙倍</span></div>
-          <div class="row"><img src="assets/orig/1109jump.png" alt=""><span><b>JUMP</b> — 起飛越過障礙物，滯空時無敵</span></div>
+          <div class="row"><img src="assets/orig/1109speedup.png" alt=""><span><b>SPEED UP</b> — 速度直接拉到 1.5，一秒後降到 1.0（基礎值是 0.3）</span></div>
+          <div class="row"><img src="assets/orig/1109jump.png" alt=""><span><b>JUMP</b> — 浮起來往前衝一秒，越過障礙物</span></div>
+          <div class="row bad"><img src="assets/orig/1109camera.png" alt=""><span><b>CAMERA</b> — 畫面上下顛倒一秒，操作跟著反過來</span></div>
           <div class="row"><img src="assets/orig/1109Life10.png" alt=""><span><b>LIFE+10</b> — 加十秒，上限 255</span></div>
           <div class="row bad"><img src="assets/orig/1109Life_10.png" alt=""><span><b>LIFE−10</b> — 扣十秒，賭輸了</span></div>
           <div class="row bad"><img src="assets/orig/onshark.png" alt=""><span><b>鯊魚</b> — 大海裡會出現，撞到扣三十秒</span></div>
@@ -536,17 +538,14 @@ var STAGES = [
    nValue -= 10, nValue += 10 (capped at 255), nValue -= 30.
    ---------------------------------------------------------------- */
 var LOOT = [
-  { id:24, key:"speed", art:"assets/orig/1109speedup.png", w:28 },
-  { id:25, key:"jump",  art:"assets/orig/1109jump.png",    w:26 },
-  { id:23, key:"life",  art:"assets/orig/1109Life10.png",  w:26 },
-  { id:22, key:"dmg",   art:"assets/orig/1109Life_10.png", w:20 }
+  { id:21, key:"speed",  art:"assets/orig/1109speedup.png" },
+  { id:22, key:"life-",  art:"assets/orig/1109Life_10.png" },
+  { id:23, key:"life+",  art:"assets/orig/1109Life10.png" },
+  { id:24, key:"jump",   art:"assets/orig/1109jump.png" },
+  { id:25, key:"camera", art:"assets/orig/1109camera.png" }
 ];
-var LOOT_TOTAL = LOOT.reduce(function(a,b){ return a + b.w; }, 0);
-function rollLoot(){
-  var r = Math.random()*LOOT_TOTAL;
-  for(var i=0;i<LOOT.length;i++){ r -= LOOT[i].w; if(r <= 0) return LOOT[i]; }
-  return LOOT[0];
-}
+/* onitem picks with math.random(0, 4) — five items, equal odds */
+function rollLoot(){ return LOOT[Math.floor(Math.random()*LOOT.length)]; }
 
 /* original tuning, straight out of the bytecode */
 var TIME_MAX   = 255;     // GameDesign.Time is a 0..255 hud progress bar
@@ -572,10 +571,16 @@ var SPD_ACC    = 0.003;   // and subtracts 0.003 every tick
 var SPD_REL    = 0.2;     // onBallRelease caps Speed at 0.2
 var SPD_MAX    = 0.8;
 var SHARK_DMG  = 30;      // sensor 30 costs 30 time
-/* an obstacle costs no time at all — onCollisionSpeed just sets Speed to 0 */
+/* an obstacle costs no time — onCollisionSpeed zeroes Speed and drops
+   bAutospeed_stat, which onAutoSpeed restores after this cooldown */
+var AUTOSPEED_COLD = 0.5;
 var SCORE_STEP = 137;     // nTotal_Score += nfloor_time * 137
 var SCORE_EVERY = 0.2;
-var LAT        = 0.13;    // lateral units per tick — tuned, not recovered
+var LAT        = 0.1;     // onLeftClick: object.translate(Box, -0.1, 0, 0)
+var CAM_BANK   = 10;      // onLeftClick banks Action_camera up to 10 degrees
+var ITEM_TIME  = 1.0;     // onitem_enable posts onitem_disable one second later
+var SPD_ITEM   = 1.5;     // item 21 sets Speed to -1.5 ...
+var SPD_AFTER  = 1.0;     // ... and onitem_disable drops it to -1
 
 /* ---------- track shape ---------- */
 function halfW(){ return (S ? STAGES[Math.min(S.stage,3)].halfW : 4.2) + 1.6; }
@@ -880,9 +885,9 @@ function newState(){
     mode:"title",
     z:0, lateral:0, size:SIZE_MIN,
     speed:SPD_REL, time:TIME_MAX, score:0, hits:0, boxesHit:0,
-    acc:0, scoreT:0, faceT:0, timeT:0,
+    acc:0, scoreT:0, faceT:0, timeT:0, stall:0,
     stage:0,
-    boost:0, air:0, vy:0, airY:0,
+    boost:0, jump:0, flip:0, airY:0,
     inv:0, shake:0, t:0,
     nextObs:60, nextBox:150, nextShark:1900, warnAt:0, cluster:0,
     steer:0, roll:0,
@@ -1172,16 +1177,18 @@ function flash(cls){
   f.className = ""; void f.offsetWidth; f.className = cls;
   setTimeout(function(){ f.className = ""; }, 420);
 }
-/* Hitting an obstacle runs random_object.onSensorCollisionBegin, which only
-   sends onCollisionSpeed (Speed = 0) and onCollision_HUDtrue (the face flashes
-   to life2). It costs no time directly — losing all your speed is the penalty,
-   and the clock keeps draining while you build it back up. */
+/* random_object.onSensorCollisionBegin sends onCollisionSpeed, which sets
+   Speed to 0 AND bAutospeed_stat to false. The tail of onAutoSpeed then stops
+   translating the duck while that flag is false, counts nAutospeed_coldtime up
+   with getLastFrameTime, and flips the flag back on at 0.5 s. So a hit is a
+   half-second stall plus the loss of whatever acceleration you had banked —
+   not a permanent stop. It costs no time and does not touch the scale. */
 function crash(){
   if(S.inv > 0) return;
   S.hits++;
   S.inv = 0.95; S.shake = 1;
   S.speed = 0;
-  S.size = SIZE_MIN;
+  S.stall = AUTOSPEED_COLD;
   S.faceT = 0.45;
   flash("hit");
   var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "hurt";
@@ -1202,16 +1209,18 @@ function openBox(){
   S.score += 1500;
   var item = rollLoot();
   itemBanner(item.art);
-  if(item.key === "speed"){                       // sensor 24
-    S.boost = 3.6;
-    S.speed = Math.min(SPD_MAX, Math.max(S.speed, SPD_BASE) * 1.35);
-  } else if(item.key === "jump"){                 // sensor 25
-    S.air = 1.5; S.vy = 13; S.airY = 0.1; S.inv = 1.6;
-  } else if(item.key === "life"){                 // sensor 23: nValue += 10, cap 255
+  if(item.key === "speed"){          // 21: Speed(-1.5), dropped to -1 after 1 s
+    S.speed = SPD_ITEM;
+    S.boost = ITEM_TIME;
+  } else if(item.key === "jump"){    // 24: onItem_moving lifts and surges forward
+    S.jump = ITEM_TIME;
+  } else if(item.key === "camera"){  // 25: Action_camera rolled to 180 degrees
+    S.flip = ITEM_TIME;
+  } else if(item.key === "life+"){   // 23: nValue += 10, capped at 255
     S.time = Math.min(TIME_MAX, S.time + 10);
     flash("good");
     var f = $("face"); f.className = ""; void f.offsetWidth; f.className = "heal";
-  } else {                                        // sensor 22: nValue -= 10
+  } else {                           // 22: nValue -= 10
     costTime(10);
   }
 }
@@ -1242,7 +1251,7 @@ function endRun(cleared){
 }
 
 /* ---------- HUD ---------- */
-var lastScore = -1, lastHp = -1, lastDist = -1, lastStage = -1, lastFace = "";
+var lastScore = -1, lastHp = -1, lastDist = -1, lastStage = -1, lastFace = "", FACES = [];
 function updateHUD(force){
   var sc = Math.floor(S.score);
   if(force || sc !== lastScore){ $("score").textContent = sc.toLocaleString("en-US"); lastScore = sc; }
@@ -1292,6 +1301,7 @@ function idleStep(dt){
   duck.rotation.y = Math.sin(S.t*0.6)*0.25;
   duck.scale.setScalar(S.size*0.85);
   camera.position.set(centerX(S.z - 9), 4.6, S.z - 11);
+  camera.up.set(0, 1, 0);
   camera.lookAt(centerX(S.z + 6), 1.6, S.z + 6);
   waterTex.offset.y -= dt*0.35;
   stepSpray(dt);
@@ -1339,14 +1349,20 @@ function step(dt){
   if(hold){
     S.size = Math.min(SIZE_MAX, Math.max(SIZE_FLOOR, S.size * Math.pow(GROW, k)));
     if(S.speed < SPD_BASE) S.speed = SPD_BASE;
-    S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC * k);
+    if(S.speed < SPD_MAX) S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC * k);
   } else {
     S.size = Math.max(SIZE_MIN, S.size / Math.pow(SHRINK, k));
-    if(S.speed > SPD_REL) S.speed = SPD_REL;
+    if(S.speed > SPD_REL && S.boost <= 0) S.speed = SPD_REL;
   }
-  if(S.boost > 0) S.speed = Math.min(SPD_MAX, S.speed + SPD_ACC * k * 3);
+  if(S.boost > 0){
+    S.boost -= dt;
+    if(S.boost <= 0) S.speed = SPD_AFTER;   // onitem_disable(21): Speed(-1)
+  }
 
-  /* movement: object.translate(Box, 0, 0, Speed) each tick */
+  /* movement: object.translate(Box, 0, 0, Speed) each tick, but only while
+     bAutospeed_stat is true — a hit pauses it for AUTOSPEED_COLD seconds */
+  if(S.stall > 0) S.stall -= dt;
+  var rolling = S.stall <= 0;
   S.acc += dt;
   var guard = 0;
   while(S.acc >= TICK && guard++ < 8){
@@ -1355,18 +1371,21 @@ function step(dt){
     var lim = Math.max(0.3, bound - 0.5*S.size);
     if(S.lateral > lim) S.lateral = lim;
     if(S.lateral < -lim) S.lateral = -lim;
-    S.z += S.speed;
+    if(rolling) S.z += S.speed + (S.jump > 0 ? 1.5/STEP_HZ : 0);
   }
   var sizeNorm = (S.size - SIZE_MIN) / (SIZE_MAX - SIZE_MIN);
-  if(S.boost > 0) S.boost -= dt;
   S.roll += (S.steer*0.32 - S.roll) * Math.min(1, dt*7);
 
-  if(S.air > 0){
-    S.air -= dt;
-    S.vy -= 24*dt;
-    S.airY = Math.max(0, S.airY + S.vy*dt);
-    if(S.airY <= 0){ S.airY = 0; S.air = 0; }
+  /* item 24: onItem_moving translateTo(x, y+1, z-1.5) every 0.01 s for a
+     second — the duck lifts and surges forward, it is not a ballistic hop */
+  if(S.jump > 0){
+    S.jump -= dt;
+    S.airY += (1.6 - S.airY) * Math.min(1, dt*9);
+    S.inv = Math.max(S.inv, 0.06);
+  } else if(S.airY > 0){
+    S.airY = Math.max(0, S.airY - dt*5);
   }
+  if(S.flip > 0) S.flip -= dt;
 
   /* Time_Ai_Handler_onTimeProcess: nValue -= 1 once a second */
   S.timeT += dt;
@@ -1428,7 +1447,7 @@ function step(dt){
     if(d.z < S.z - 20){ d.live = false; m.visible = false; continue; }
     ddz = d.z - S.z;
     if(ddz > 6 || ddz < -3) continue;
-    if(S.airY > d.h + 0.6) continue;
+    if(S.airY > d.h + 0.4) continue;
     ddx = (centerX(d.z) + d.lat) - dx;
     if(Math.abs(ddx) < d.r + dr && Math.abs(ddz) < d.rz + dr*0.9){
       d.live = false; m.visible = false;
@@ -1481,7 +1500,7 @@ function placeDuck(sizeNorm, dt){
   duck.position.set(x, S.airY + Math.sin(S.t*7)*0.07*S.size, S.z);
   duck.rotation.z = S.roll;
   duck.rotation.y = -S.steer*0.28;
-  duck.rotation.x = S.air > 0 ? -S.vy*0.02 : Math.sin(S.t*5)*0.03;
+  duck.rotation.x = S.jump > 0 ? -0.25 : Math.sin(S.t*5)*0.03;
   duckKey.rotation.x += dt * S.speed * 0.4;
   foamCone.material.opacity = 0.1 + sizeNorm*0.2 + (S.boost > 0 ? 0.2 : 0);
   foamCone.scale.set(1, 1 + (S.boost > 0 ? 0.7 : 0) + sizeNorm*0.4, 1);
@@ -1497,6 +1516,11 @@ function placeCamera(sizeNorm){
     4.3 + S.airY*0.55 + sizeNorm*1.7 + (Math.random()-0.5)*sh*0.6,
     cz
   );
+  /* onLeftClick / onRightClick roll Action_camera up to 10 degrees into the
+     turn; item 25 rolls it a full 180 and onitem_disable puts it back */
+  var bank = -S.steer * CAM_BANK * Math.PI/180;
+  var flip = S.flip > 0 ? -1 : 1;
+  camera.up.set(Math.sin(bank)*flip, Math.cos(bank)*flip, 0);
   camera.lookAt(centerX(S.z + 16) + S.lateral*0.25, 1.9 + S.airY*0.6 + sizeNorm*0.8, S.z + 16);
   camera.fov = 64 + (S.speed*60 - 18)*0.18 + (S.boost > 0 ? 6 : 0);
   camera.updateProjectionMatrix();
@@ -1597,6 +1621,11 @@ function start(saved){
   } else {
     show("title");
   }
+
+  // hold references so swapping #face.src never hits an unfetched image
+  FACES = ["life1","life2","life3"].map(function(n){
+    var i = new Image(); i.src = "assets/orig/" + n + ".png"; return i;
+  });
 
   var img = new Image();
   img.onload = img.onerror = function(){

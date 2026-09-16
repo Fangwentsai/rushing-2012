@@ -69,23 +69,33 @@ Web 版用的是**當年真正的素材**，玩法數值也是從原始的 Lua b
 | 畫面上方那條 | **時間**，0–255，每秒掉 1 | `Time_Ai_Handler_onTimeProcess` |
 | 時間過低警示 | 低於 **50** 開始閃 `life3` | `onTimeProcess` → `onLife` |
 | 結算加成 | 剩餘時間 **× 500** | `Time_Ai_Handler_onTimeCount` |
-| 撞到障礙物 | **速度歸零，不扣時間** | `Action_Ai_Handler_onCollisionSpeed` |
+| 撞到障礙物 | `Speed = 0` 且 `bAutospeed_stat = false`，**前進暫停 0.5 秒後自動恢復**，不扣時間、不改體積 | `onCollisionSpeed` + `onAutoSpeed` 尾段 |
 | 撞到時的回饋 | HUD 鴨臉閃 `life2` | `Time_Ai_Handler_onCollision_HUDtrue` |
 | 變大 | `scale × 1.1`，下限 0.9 | `Action_Ai_Handler_onBallTouch` |
 | 縮小 | `scale ÷ 1.3`，下限 0.6 | `Action_Ai_Handler_onBallRelease` |
 | 速度（按住） | 基礎 0.3，每次 −0.003 | `onBallTouch` |
 | 速度（放開） | 上限 0.2 | `onBallRelease` |
-| LIFE +10 / −10 | ±10 秒，上限 255 | `onItem_Collision`（感測器 23 / 22） |
-| 鯊魚 | −30 秒 | `onItem_Collision`（感測器 30） |
+| 左右移動 | 每次 **0.1** 單位 | `Action_Ai_Handler_onLeftClick` |
+| 攝影機側傾 | 轉彎時每次 +0.5 度，**上限 10 度** | `onLeftClick` |
+| 攝影機基準俯角 | −15 度 | `onitem_disable` 還原值 |
 | 分數 | `nTotal_Score += nfloor_time × 137` | `Time_Ai_Handler_onScorecount` |
 | 左右邊界 | ±4.2 / ±2.2 / ±4.7 | `Action_Ai_Handler_onAutoSpeed` |
-| 關卡長度 | 600 / 590 / 600 | `onRoom1..4_detectz` |
 | 鴨子動畫速度 | 按住 150、放開 60 | `Action_Ai_Handler_onBallBoolin` |
 
-> **那條不是血條，是計時器。**上架文案寫「血量歸零遊戲結束」，但程式裡它叫
-> `GameDesign.Time`，每秒掉 1，撞到障礙物完全不扣 —— 只有道具和鯊魚會動它。
-> 撞到東西的代價是速度歸零，而時鐘不會停。這跟更早的設計文件寫的
-> 「當角色碰到障礙物時，會增加完成秒數，也會減少遊戲時間」完全一致。
+### 五個道具
+
+`onitem` 用 `math.random(0, 4)` 從五個裡**等機率**挑一個，每個效果持續 **1 秒**
+（`onitem_enable` 會排一秒後的 `onitem_disable`）。
+
+| 感測器 | 道具 | 效果 | 出處 |
+|---|---|---|---|
+| 21 | SPEED UP | `Speed = -1.5`，一秒後降到 `-1`（基礎值 0.3） | `onitem_enable` / `onitem_disable` |
+| 22 | LIFE−10 | 時間 −10 | `Time_Ai_Handler_onItem_Collision` |
+| 23 | LIFE+10 | 時間 +10，上限 255 | 同上 |
+| 24 | JUMP | `translateTo(x, y+1, z−1.5)` 每 0.01 秒 —— 浮起來往前衝，不是拋物線跳躍 | `Action_Ai_Handler_onItem_moving` |
+| 25 | **CAMERA** | `setRotation(Action_camera, 0, y, 180)` —— **畫面上下顛倒** | `onitem_enable` |
+| 30 | 鯊魚 | 時間 −30 | `onItem_Collision` |
+| 87 | WARNING | 顯示 `GameDesign.warning` | `onitem_disable` |
 
 ### 唯一調過的參數
 
