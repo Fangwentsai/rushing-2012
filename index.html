@@ -307,9 +307,27 @@
   }
   #gyrobtn[data-on="1"]{background:var(--moss);border-color:#86b055;color:#f2ffe2}
 
-  .loading{position:absolute;inset:0;z-index:20;background:#000;display:grid;place-items:center;transition:opacity .5s}
-  .loading img{width:56%;opacity:.9}
+  .loading{
+    position:absolute;inset:0;z-index:20;background:#000;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:26px;transition:opacity .45s;
+  }
+  .loading img{width:56%;max-width:320px;opacity:.9}
   .loading.gone{opacity:0;pointer-events:none}
+  #loadwrap{width:62%;max-width:300px}
+  #loadbar{
+    height:9px;border-radius:5px;overflow:hidden;
+    background:#1a1a1a;border:1px solid #33302c;
+  }
+  #loadfill{
+    height:100%;width:0%;border-radius:4px;
+    background:linear-gradient(90deg,#8a6a2a,var(--duck));
+    transition:width .25s ease-out;
+  }
+  #loadtext{
+    margin:9px 0 0;text-align:right;
+    font-family:var(--display);font-size:15px;letter-spacing:.06em;color:#8d7f6b;
+  }
 
   /* squat viewports: give the menu its room back */
   @media (max-height:600px){
@@ -461,7 +479,13 @@
       </div>
     </div>
 
-    <div class="loading" id="loading"><img src="assets/thyy.png" alt="THYY"></div>
+    <div class="loading" id="loading">
+      <img src="assets/thyy.png" alt="THYY">
+      <div id="loadwrap">
+        <div id="loadbar"><div id="loadfill"></div></div>
+        <p id="loadtext">Loading...</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -706,6 +730,16 @@ function makeDotTexture(){
    size this remake's world uses.
    ---------------------------------------------------------------- */
 var MODELS = null, SCENES = null;
+
+/* Everything the game draws is fetched up front behind the loading screen —
+   dropping into the tunnel while textures and music were still arriving looked
+   bad. TEX holds the decoded textures; tex() just reads one back. */
+var TEX = {};
+function tex(name){
+  if(!TEX[name]) TEX[name] = new THREE.TextureLoader().load(texUrl(name));
+  return TEX[name];
+}
+function texUrl(name){ return "assets/orig/" + name + ".png"; }
 function geom(name, targetH, keepGround){
   var m = (MODELS && MODELS[name]) || (SCENES && SCENES[name]);
   if(!m) return null;
@@ -724,12 +758,12 @@ function geom(name, targetH, keepGround){
 
 function buildDuck(){
   var g = new THREE.Group();
-  var tex = new THREE.TextureLoader().load("assets/orig/move_1.png");
-  var skin = new THREE.MeshLambertMaterial({ map:tex });
+  var duckTex = tex("move_1");
+  var skin = new THREE.MeshLambertMaterial({ map:duckTex });
   var body = new THREE.Mesh(geom("move_Sphere01-lib", 2.1, true), skin);
   g.add(body);
   var trim = new THREE.Mesh(geom("move_Object01-lib", 1.5, true),
-                            new THREE.MeshLambertMaterial({ map:tex }));
+                            new THREE.MeshLambertMaterial({ map:duckTex }));
   trim.position.y = 0.18;
   g.add(trim);
   duckKey = trim;
@@ -755,7 +789,7 @@ function buildTree(){
   );
   trunk.position.y = 1.3; g.add(trunk);
   var leafMat = new THREE.MeshLambertMaterial({ color:0x88a86a,
-    map:new THREE.TextureLoader().load("assets/orig/Tree.png") });
+    map:tex("Tree") });
   for(var i=0;i<3;i++){
     var c = new THREE.Mesh(new THREE.ConeGeometry(1.7 - i*0.36, 2.0, 7), leafMat);
     c.position.y = 2.6 + i*0.95;
@@ -782,10 +816,9 @@ function initGL(){
   /* Scene01 is a closed tunnel with no sky mesh, so it keeps the painted
      gradient. Scenes 02-04 each place a sky plane, so they get the real
      texture: sky (sunset), sky3 (blue), sky4 (night with the moon). */
-  var texLoader = new THREE.TextureLoader();
   for(var s=0;s<STAGES.length;s++){
     if(STAGES[s].skyTex){
-      skyTex[s] = texLoader.load("assets/orig/" + STAGES[s].skyTex + ".png");
+      skyTex[s] = tex(STAGES[s].skyTex);
       skyTex[s].wrapS = THREE.RepeatWrapping;
       skyTex[s].repeat.set(2, 1);
     } else {
@@ -802,7 +835,7 @@ function initGL(){
   scene.add(skyA); scene.add(skyB);
 
   // Materials/water.mat -> water01b; water_plane.mat carries no texture at all
-  waterTex = new THREE.TextureLoader().load("assets/orig/water01b.png");
+  waterTex = tex("water01b");
   waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
   waterTex.repeat.set(7, 12);
   waterMat = new THREE.MeshLambertMaterial({ map:waterTex, color:STAGES[0].water });
@@ -814,7 +847,7 @@ function initGL(){
   wallsMat = new THREE.MeshLambertMaterial({ color:STAGES[0].wall });
   wallTex = {};
   ["scene_wall","scene_new_44556","scene3"].forEach(function(n){
-    var t = texLoader.load("assets/orig/" + n + ".png");
+    var t = tex(n);
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2);
     wallTex[n] = t;
   });
@@ -886,7 +919,7 @@ function initGL(){
   }
 
   // the golden ? box, using the original 3ds Max render as a billboard
-  boxTex = new THREE.TextureLoader().load("assets/orig/itembox.png");
+  boxTex = tex("itembox");
   var boxGeo = geom("Item01_Object01-lib", 3.4, true);
   for(i=0;i<5;i++){
     m = boxGeo
@@ -903,9 +936,9 @@ function initGL(){
   var sharkGeo = geom("shark_Sphere01-lib", 6.0, false);
   shark = sharkGeo
     ? new THREE.Mesh(sharkGeo, new THREE.MeshLambertMaterial({
-        map:new THREE.TextureLoader().load("assets/orig/shark.png"), color:0x8a9098 }))
+        map:tex("shark"), color:0x8a9098 }))
     : new THREE.Mesh(new THREE.PlaneGeometry(7.2, 4.2),
-        new THREE.MeshBasicMaterial({ map:new THREE.TextureLoader().load("assets/orig/onshark.png"),
+        new THREE.MeshBasicMaterial({ map:tex("onshark"),
                                       transparent:true, alphaTest:0.3, side:THREE.DoubleSide }));
   shark.visible = false;
   shark.userData = { live:false, z:0, lat:0, dir:1 };
@@ -1019,12 +1052,19 @@ $("gyrobtn").addEventListener("click", function(){
 var music = null, musicName = "", musicOn = true;
 /* Ogg Vorbis does not decode in Safari, so the five tracks ship as MP3 —
    the one format every browser handles, phones included. */
+var AUDIO = {};
 function playMusic(name){
   if(!musicOn || musicName === name) return;
   musicName = name;
   try{
-    if(!music){ music = new Audio(); music.loop = true; music.volume = 0.42; }
-    music.src = "assets/audio/" + name + ".mp3";
+    if(music){ music.pause(); }
+    music = AUDIO[name];
+    if(!music){
+      music = new Audio("assets/audio/" + name + ".mp3");
+      AUDIO[name] = music;
+    }
+    music.loop = true; music.volume = 0.42;
+    try{ music.currentTime = 0; }catch(e){}
     var pr = music.play();
     if(pr && pr.catch) pr.catch(function(){});
   }catch(e){}
@@ -1716,30 +1756,74 @@ function boot(saved){
     show("title");
   }
 
-  // hold references so swapping #face.src never hits an unfetched image
+  // the HUD swaps #face.src between these; they are already in the cache
   FACES = ["life1","life2","life3"].map(function(n){
-    var i = new Image(); i.src = "assets/orig/" + n + ".png"; return i;
+    var i = new Image(); i.src = texUrl(n); return i;
   });
-
-  var img = new Image();
-  img.onload = img.onerror = function(){
-    setTimeout(function(){ $("loading").className = "loading gone"; }, 260);
-  };
-  img.src = "assets/title.png";
 
   requestAnimationFrame(frame);
 }
 
-/* models.json holds the decoded .msh geometry; the scene needs it up front */
+/* ----------------------------------------------------------------
+   Preload. Geometry, every texture and all five tracks are fetched before
+   the title appears, so nothing pops in once you are moving.
+   ---------------------------------------------------------------- */
+var TEX_NAMES = ["move_1","Tree","water01b","itembox","shark","onshark","warning",
+                 "life1","life2","life3","1109speedup","1109jump","1109Life10",
+                 "1109Life_10","1109camera","sky","sky3","sky4",
+                 "scene_wall","scene3","scene_new_44556"];
+var TRACKS = ["Menu","scene01","scene02","scene03","scene04"];
+
 function start(saved){
-  var done = function(){ boot(saved); };
-  try{
-    Promise.all([
-      fetch("assets/models.json").then(function(r){ return r.json(); }),
-      fetch("assets/scenes.json").then(function(r){ return r.json(); }).catch(function(){ return null; })
-    ]).then(function(j){ MODELS = j[0]; SCENES = j[1]; done(); })
-      .catch(function(){ done(); });
-  }catch(e){ done(); }
+  var total = 2 + TEX_NAMES.length + TRACKS.length + 1, done = 0, finished = false;
+  var fill = $("loadfill"), label = $("loadtext");
+  function step(){
+    done++;
+    var pct = Math.min(100, Math.round(done / total * 100));
+    if(fill) fill.style.width = pct + "%";
+    if(label) label.textContent = pct < 100 ? "Loading... " + pct + "%" : "Loading... 100%";
+    if(done >= total && !finished){ finished = true; setTimeout(go, 200); }
+  }
+  function go(){
+    $("loading").className = "loading gone";
+    boot(saved);
+  }
+
+  // geometry
+  ["assets/models.json", "assets/scenes.json"].forEach(function(u, i){
+    fetch(u).then(function(r){ return r.json(); })
+      .then(function(j){ if(i === 0) MODELS = j; else SCENES = j; })
+      .catch(function(){})
+      .then(step, step);
+  });
+
+  // textures, held in TEX so initGL can read them straight back
+  var loader = new THREE.TextureLoader();
+  TEX_NAMES.forEach(function(n){
+    loader.load(texUrl(n), function(t){ TEX[n] = t; step(); }, undefined, step);
+  });
+
+  // the title art the menu shows immediately
+  var img = new Image();
+  img.onload = img.onerror = step;
+  img.src = "assets/title.png";
+
+  /* Audio: canplaythrough is the honest signal, but some browsers withhold it
+     until a gesture, so each track also gives up after four seconds. */
+  TRACKS.forEach(function(n){
+    var a = new Audio();
+    var settled = false;
+    function ok(){ if(!settled){ settled = true; AUDIO[n] = a; step(); } }
+    a.addEventListener("canplaythrough", ok, { once:true });
+    a.addEventListener("error", ok, { once:true });
+    setTimeout(ok, 4000);
+    a.preload = "auto";
+    a.src = "assets/audio/" + n + ".mp3";
+    a.load();
+  });
+
+  // never strand the player behind the bar
+  setTimeout(function(){ if(!finished){ finished = true; go(); } }, 12000);
 }
 
 var hot = window.claude && window.claude.hot;
